@@ -1,0 +1,30 @@
+# Dependencies
+node_modules/
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# Build output
+dist/
+build/
+
+# Secrets — never commit real credentials
+.env
+.env.*
+!.env.example
+
+# Editor/OS noise
+.vscode/
+.DS_Store
+Thumbs.db
+
+# Logs and local debug output
+*.log
+__vite_dev.log
+last_scan_debug.txt
+
+# Stray duplicate catalog file at the project root — the real one the
+# backend actually reads at runtime is backend/bd_article.xlsx, which is
+# NOT ignored (catalog.py loads it on boot; deployment needs it committed).
+/bd_article (1).xlsx

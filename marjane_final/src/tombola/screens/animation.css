@@ -1,0 +1,11 @@
+/* 
+ * Legacy card animations — no longer directly imported by CardsScreen.
+ * CardsScreen now uses dice-theme.css for the unified premium aesthetic.
+ * This file is kept as a fallback for any remaining references.
+ */
+@media (prefers-reduced-motion: reduce) {
+  .card-flip {
+    animation: none;
+    transform: rotateY(180deg);
+  }
+}

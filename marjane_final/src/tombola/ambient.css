@@ -1,0 +1,63 @@
+/* ============================================================
+   Shared ambient layer — ties the "quiet" screens (header, form,
+   scan, result) visually to the game-show energy of dice-theme.css
+   without depending on any of its scoped variables. Everything here
+   reads the global brand and ink CSS variables that theme.ts sets on the
+   root element, so it re-skins live with the rest of the site.
+   ============================================================ */
+
+/* Floating light particles — used behind CampaignHeader for continuity
+   with the particle field on Dice/Cards. Smaller, sparser, header-scaled. */
+@keyframes tombola-particle-drift {
+  0% { transform: translateY(16px) translateX(0) scale(0.6); opacity: 0; }
+  12% { opacity: 0.85; }
+  50% { transform: translateY(-70px) translateX(var(--drift-x, 10px)) scale(1); }
+  88% { opacity: 0.55; }
+  100% { transform: translateY(-140px) translateX(calc(var(--drift-x, 10px) * 2)) scale(0.5); opacity: 0; }
+}
+
+.header-particle-field {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  overflow: hidden;
+}
+
+.header-particle {
+  position: absolute;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(255, 255, 255, 0.95) 0%, rgba(255, 255, 255, 0.3) 60%, transparent 100%);
+  opacity: 0;
+  animation: tombola-particle-drift linear infinite;
+}
+
+/* Soft ambient wash behind the main content area — keeps Form/Scan from
+   feeling flat next to the richer Dice/Cards backgrounds. */
+.tombola-ambient-bg {
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background:
+    radial-gradient(55% 38% at 50% 0%, color-mix(in srgb, var(--brand-primary) 7%, transparent) 0%, transparent 72%),
+    radial-gradient(46% 32% at 100% 100%, color-mix(in srgb, var(--brand-secondary) 9%, transparent) 0%, transparent 70%);
+}
+
+.tombola-ambient-bg::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background-image: radial-gradient(circle, color-mix(in srgb, var(--ink) 7%, transparent) 1px, transparent 1px);
+  background-size: 24px 24px;
+  opacity: 0.45;
+  mask-image: radial-gradient(65% 55% at 50% 25%, black 0%, transparent 75%);
+  -webkit-mask-image: radial-gradient(65% 55% at 50% 25%, black 0%, transparent 75%);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .header-particle {
+    animation: none !important;
+    opacity: 0 !important;
+  }
+}

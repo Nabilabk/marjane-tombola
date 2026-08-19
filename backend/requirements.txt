@@ -1,0 +1,11 @@
+fastapi
+uvicorn[standard]
+pydantic
+requests
+pymysql
+python-multipart
+python-dotenv
+openpyxl
+rapidfuzz
+PyJWT
+bcrypt

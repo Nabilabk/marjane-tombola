@@ -1,0 +1,100 @@
+@import url('https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400..800&display=swap');
+@import url('https://api.fontshare.com/v2/css?f[]=general-sans@400,500,600&display=swap');
+@import 'tailwindcss';
+
+@theme {
+  /* Bricolage Grotesque — display face with real character (opsz + weight axes). */
+  --font-display: 'Bricolage Grotesque', ui-serif, Georgia, serif;
+  --font-sans: 'General Sans', ui-sans-serif, system-ui, sans-serif;
+}
+
+/*
+  Dynamic brand system. Every screen reads these three properties; App.tsx
+  overwrites them at runtime when the active brand changes. Defaults below are
+  the MARJANE brand so the file renders standalone.
+*/
+:root {
+  --brand-primary: #0c2340;
+  --brand-secondary: #f5a623;
+  --brand-accent: #f27c38;
+
+  /* Derived neutrals — a warm off-white ground, never brand-flooded. */
+  --page: #fcfaf6;
+  --ink: #1a1714;
+  --ink-muted: #6f6a63;
+  --hairline: #e7e1d7;
+  --card: #ffffff;
+  --field: #ffffff;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  min-height: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--page);
+  color: var(--ink);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+/* Hide scrollbars until the user scrolls. */
+* {
+  scrollbar-width: none;
+}
+*::-webkit-scrollbar {
+  width: 0;
+  height: 0;
+}
+
+::selection {
+  background: color-mix(in srgb, var(--brand-primary) 22%, transparent);
+  color: var(--brand-secondary);
+}
+
+/* Screen transition — light slide + fade, respects reduced motion. */
+@keyframes screen-in {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+.screen-in {
+  animation: screen-in 0.42s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+@keyframes float-soft {
+  0%,
+  100% {
+    transform: translateY(0) rotate(var(--r, 0deg));
+  }
+  50% {
+    transform: translateY(-9px) rotate(var(--r, 0deg));
+  }
+}
+.float-soft {
+  animation: float-soft 7s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .screen-in,
+  .float-soft {
+    animation: none;
+  }
+}
+
+[dir='rtl'] {
+  font-family: var(--font-sans);
+}

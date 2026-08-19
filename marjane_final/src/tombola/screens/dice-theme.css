@@ -1,0 +1,712 @@
+/* ============================================================
+   Dice Tombola — premium theme
+   Import this once, globally, alongside (or instead of) the
+   previous card-game animation stylesheet. Nothing here reaches
+   outside the .dice-page namespace, so it's safe to add.
+   ============================================================ */
+
+@import url('https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap');
+
+.dice-page {
+  --dice-brand: var(--brand-primary, #E11931);
+  --dice-brand-soft: color-mix(in srgb, var(--dice-brand) 12%, white);
+  --dice-brand-glow: color-mix(in srgb, var(--dice-brand) 38%, transparent);
+  --dice-ink: #17140f;
+  --dice-ink-soft: rgba(23, 20, 15, 0.56);
+  --dice-ink-faint: rgba(23, 20, 15, 0.36);
+  --dice-surface: #ffffff;
+  --dice-surface-glass: rgba(255, 255, 255, 0.66);
+  --dice-bg-a: #fbf9f4;
+  --dice-bg-b: #efe9df;
+  --dice-gold: #c9a24b;
+  --dice-shadow-color: 23, 20, 15;
+
+  /* Same display font as the rest of the site (Form/Scan/Result use
+     var(--font-display) via ScreenTitle) so Dice/Cards don't read as a
+     different app pasted into the flow — Manrope is only the fallback
+     for campaigns that haven't set a display font. */
+  font-family: var(--font-display), 'Manrope', ui-sans-serif, system-ui, -apple-system, sans-serif;
+  color: var(--dice-ink);
+  position: relative;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  isolation: isolate;
+}
+
+/* ---------------- Background ---------------- */
+
+.dice-bg {
+  position: absolute;
+  inset: 0;
+  z-index: -2;
+  background:
+    radial-gradient(60% 46% at 50% 18%, var(--dice-brand-soft) 0%, transparent 70%),
+    radial-gradient(90% 60% at 50% 100%, #f4f0e8 0%, transparent 60%),
+    linear-gradient(180deg, var(--dice-bg-a) 0%, var(--dice-bg-b) 100%);
+}
+
+.dice-bg::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background-image: radial-gradient(circle, rgba(23, 20, 15, 0.05) 1px, transparent 1px);
+  background-size: 22px 22px;
+  opacity: 0.5;
+  mask-image: radial-gradient(70% 70% at 50% 40%, black 0%, transparent 75%);
+}
+
+.dice-particle-field {
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  overflow: hidden;
+}
+
+.dice-particle {
+  position: absolute;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(255, 255, 255, 0.95) 0%, var(--dice-brand-soft) 60%, transparent 100%);
+  opacity: 0;
+  animation: dice-particle-drift linear infinite;
+  box-shadow: 0 0 6px rgba(255, 255, 255, 0.5);
+}
+
+@keyframes dice-particle-drift {
+  0% { transform: translateY(20px) translateX(0) scale(0.6); opacity: 0; }
+  12% { opacity: 0.9; }
+  50% { transform: translateY(-140px) translateX(var(--drift-x, 10px)) scale(1); }
+  88% { opacity: 0.7; }
+  100% { transform: translateY(-280px) translateX(calc(var(--drift-x, 10px) * 2)) scale(0.5); opacity: 0; }
+}
+
+/* ---------------- Content shell ---------------- */
+
+.dice-content {
+  position: relative;
+  z-index: 1;
+  width: 100%;
+  max-width: 30rem;
+  padding: clamp(0.5rem, 3vw, 1.5rem) 1.25rem clamp(1rem, 3vh, 1.5rem);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+}
+
+.dice-eyebrow {
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: var(--dice-brand);
+  margin: 0 0 0.75rem;
+}
+
+.dice-title {
+  font-size: clamp(1.7rem, 6vw, 2.35rem);
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  line-height: 1.12;
+  margin: 0 0 0.6rem;
+  color: var(--dice-ink);
+}
+
+.dice-hint {
+  font-size: 0.95rem;
+  font-weight: 500;
+  line-height: 1.5;
+  color: var(--dice-ink-soft);
+  max-width: 22rem;
+  margin: 0 auto;
+}
+
+/* ---------------- Dice stage ---------------- */
+
+.dice-stage {
+  position: relative;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  margin: clamp(0.75rem, 3vh, 1.75rem) 0;
+  min-height: min(46vw, 220px);
+}
+
+.dice-stage-glow {
+  position: absolute;
+  width: min(68vw, 300px);
+  height: min(68vw, 300px);
+  border-radius: 50%;
+  background: radial-gradient(circle, var(--dice-brand-glow) 0%, transparent 68%);
+  filter: blur(4px);
+  pointer-events: none;
+  transition: opacity 0.4s ease, transform 0.4s ease;
+}
+
+.dice-ground-shadow {
+  position: absolute;
+  bottom: 6%;
+  width: min(58vw, 220px);
+  height: 28px;
+  border-radius: 50%;
+  background: radial-gradient(ellipse, rgba(var(--dice-shadow-color), 0.32) 0%, transparent 72%);
+  filter: blur(2px);
+}
+
+/* ---------------- Cube ---------------- */
+
+.dice-cube-viewport {
+  /* Base/default — matches --lg below (the size Dice actually defaults
+     to); the --sm/--md/--lg modifier classes override this as needed. */
+  --dice-size: clamp(148px, 40vw, 184px);
+  width: var(--dice-size);
+  height: var(--dice-size);
+  perspective: 1200px;
+  perspective-origin: 50% 40%;
+}
+
+.dice-cube-viewport--sm { --dice-size: clamp(72px, 20vw, 92px); }
+.dice-cube-viewport--md { --dice-size: clamp(104px, 30vw, 132px); }
+/* Was clamp(200px, 58vw, 248px) — filled most of a phone screen on its
+   own and, combined with the header above it, forced a scroll just to
+   reach the roll button. Sized to comfortably fit one mobile viewport. */
+.dice-cube-viewport--lg { --dice-size: clamp(148px, 40vw, 184px); }
+
+.dice-cube {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  transform-style: preserve-3d;
+}
+
+.dice-face {
+  position: absolute;
+  inset: 0;
+  border-radius: 20%;
+  backface-visibility: hidden;
+  box-shadow:
+    inset 0 1px 1px rgba(255, 255, 255, 0.9),
+    inset 0 -6px 14px rgba(23, 20, 15, 0.08),
+    0 1px 0 rgba(23, 20, 15, 0.04);
+}
+
+/* six faces of a true cube: rotate into place, then push out
+   by half the cube's edge length so they form a real volume
+   instead of six flat, coincident planes */
+.dice-face--front  { transform: rotateY(0deg)    translateZ(calc(var(--dice-size) / 2)); }
+.dice-face--right  { transform: rotateY(90deg)   translateZ(calc(var(--dice-size) / 2)); }
+.dice-face--top     { transform: rotateX(-90deg)  translateZ(calc(var(--dice-size) / 2)); }
+.dice-face--bottom  { transform: rotateX(90deg)   translateZ(calc(var(--dice-size) / 2)); }
+.dice-face--left    { transform: rotateY(-90deg)  translateZ(calc(var(--dice-size) / 2)); }
+.dice-face--back    { transform: rotateY(180deg)  translateZ(calc(var(--dice-size) / 2)); }
+
+.dice-face-inner {
+  position: absolute;
+  inset: 10%;
+}
+
+.dice-pip {
+  position: absolute;
+  border-radius: 50%;
+  transform: translate(-50%, -50%);
+  background: radial-gradient(circle at 32% 30%, #4a4640, var(--dice-ink) 70%);
+  box-shadow: inset 0 1px 1px rgba(0, 0, 0, 0.4), 0 1px 0 rgba(255, 255, 255, 0.3);
+}
+
+.dice-face--top .dice-pip,
+.dice-face--front .dice-pip {
+  background: radial-gradient(circle at 32% 30%, #55504a, var(--dice-ink) 72%);
+}
+
+/* per-face light gradients simulate a single overhead key light —
+   dice-cube--classic (the default) is unprefixed for backward compat with
+   any caller that doesn't pass a style variant at all. */
+.dice-face--top    { background: linear-gradient(155deg, #ffffff 0%, #f4f1ea 100%); }
+.dice-face--front   { background: linear-gradient(155deg, #fbfaf7 0%, #ece7dc 100%); }
+.dice-face--right   { background: linear-gradient(155deg, #f2efe8 0%, #ddd6c8 100%); }
+.dice-face--left    { background: linear-gradient(155deg, #f2efe8 0%, #ddd6c8 100%); }
+.dice-face--bottom  { background: linear-gradient(155deg, #e7e1d4 0%, #cfc7b6 100%); }
+.dice-face--back    { background: linear-gradient(155deg, #ece6d9 0%, #d8d0bf 100%); }
+
+/* midnight — a dark cube with light pips, for campaigns with a darker
+   overall theme. Pip color flips to a pale gold so it still reads against
+   the near-black faces. */
+.dice-cube--midnight .dice-face--top    { background: linear-gradient(155deg, #2b2d33 0%, #17181c 100%); }
+.dice-cube--midnight .dice-face--front  { background: linear-gradient(155deg, #24262b 0%, #131417 100%); }
+.dice-cube--midnight .dice-face--right  { background: linear-gradient(155deg, #202226 0%, #101114 100%); }
+.dice-cube--midnight .dice-face--left   { background: linear-gradient(155deg, #202226 0%, #101114 100%); }
+.dice-cube--midnight .dice-face--bottom { background: linear-gradient(155deg, #1a1b1f 0%, #0c0d0f 100%); }
+.dice-cube--midnight .dice-face--back   { background: linear-gradient(155deg, #1d1e22 0%, #0e0f11 100%); }
+.dice-cube--midnight .dice-pip {
+  background: radial-gradient(circle at 32% 30%, #e9d9ad, var(--dice-gold) 70%);
+  box-shadow: inset 0 1px 1px rgba(0, 0, 0, 0.5), 0 1px 0 rgba(255, 255, 255, 0.12);
+}
+
+/* brandTint — the classic cream palette washed with the campaign's own
+   primary color instead of a neutral one, via the --dice-tint custom
+   property Dice.tsx sets from theme.colors.primary. */
+.dice-cube--brandTint .dice-face--top    { background: linear-gradient(155deg, color-mix(in srgb, var(--dice-tint) 10%, white) 0%, color-mix(in srgb, var(--dice-tint) 22%, white) 100%); }
+.dice-cube--brandTint .dice-face--front  { background: linear-gradient(155deg, color-mix(in srgb, var(--dice-tint) 16%, white) 0%, color-mix(in srgb, var(--dice-tint) 30%, white) 100%); }
+.dice-cube--brandTint .dice-face--right  { background: linear-gradient(155deg, color-mix(in srgb, var(--dice-tint) 24%, white) 0%, color-mix(in srgb, var(--dice-tint) 40%, white) 100%); }
+.dice-cube--brandTint .dice-face--left   { background: linear-gradient(155deg, color-mix(in srgb, var(--dice-tint) 24%, white) 0%, color-mix(in srgb, var(--dice-tint) 40%, white) 100%); }
+.dice-cube--brandTint .dice-face--bottom { background: linear-gradient(155deg, color-mix(in srgb, var(--dice-tint) 34%, white) 0%, color-mix(in srgb, var(--dice-tint) 50%, white) 100%); }
+.dice-cube--brandTint .dice-face--back   { background: linear-gradient(155deg, color-mix(in srgb, var(--dice-tint) 30%, white) 0%, color-mix(in srgb, var(--dice-tint) 46%, white) 100%); }
+
+.dice-burst {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 0;
+  height: 0;
+  pointer-events: none;
+}
+
+.dice-burst-dot {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: radial-gradient(circle, var(--dice-gold) 0%, transparent 72%);
+}
+
+/* ---------------- Result card ---------------- */
+
+.dice-result-card {
+  width: 100%;
+  border-radius: 1.5rem;
+  padding: 1.5rem 1.75rem;
+  background: var(--dice-surface-glass);
+  backdrop-filter: blur(18px) saturate(160%);
+  -webkit-backdrop-filter: blur(18px) saturate(160%);
+  border: 1px solid rgba(255, 255, 255, 0.6);
+  box-shadow:
+    0 18px 40px -14px rgba(var(--dice-shadow-color), 0.28),
+    0 2px 8px rgba(var(--dice-shadow-color), 0.06);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: 0.35rem;
+}
+
+.dice-result-number {
+  font-size: 3.25rem;
+  font-weight: 800;
+  line-height: 1;
+  letter-spacing: -0.03em;
+  color: var(--dice-brand);
+  text-shadow: 0 0 24px var(--dice-brand-glow);
+}
+
+.dice-result-label {
+  font-size: 1.02rem;
+  font-weight: 700;
+  color: var(--dice-ink);
+}
+
+.dice-result-sub {
+  font-size: 0.86rem;
+  font-weight: 500;
+  color: var(--dice-ink-faint);
+}
+
+/* ---------------- Buttons ---------------- */
+
+.dice-cta {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  margin-top: clamp(0.75rem, 3vh, 1.5rem);
+}
+
+/* Chunky "arcade" button — rounded rectangle (not a pill/circle) that
+   reads as a physical game button: a solid "ledge" of color under it
+   that the button presses into on tap. Radius follows the campaign's
+   own corner-radius setting (theme.radius, --radius) so it always
+   matches every other rounded shape on the site instead of hardcoding
+   its own look. */
+.dice-btn {
+  --dice-btn-ledge: color-mix(in srgb, var(--dice-brand) 70%, black);
+  position: relative;
+  width: 100%;
+  border: none;
+  border-radius: calc(var(--radius, 14px) + 4px);
+  padding: 1.05rem 1.5rem;
+  font-family: inherit;
+  font-size: 1rem;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  cursor: pointer;
+  color: #fff;
+  background: linear-gradient(155deg, color-mix(in srgb, var(--dice-brand) 88%, white 12%), var(--dice-brand));
+  box-shadow:
+    0 4px 0 0 var(--dice-btn-ledge),
+    0 14px 28px -10px var(--dice-brand-glow),
+    inset 0 1px 0 rgba(255, 255, 255, 0.35);
+  transition: box-shadow 0.15s ease, filter 0.2s ease, transform 0.15s ease;
+}
+
+.dice-btn:hover:not(:disabled) {
+  filter: brightness(1.04);
+  box-shadow:
+    0 4px 0 0 var(--dice-btn-ledge),
+    0 18px 32px -10px var(--dice-brand-glow),
+    inset 0 1px 0 rgba(255, 255, 255, 0.4);
+}
+
+/* The actual press-down motion (translateY) is driven by GameButton's
+   framer-motion whileTap, since an inline style always wins over this
+   CSS anyway — this rule only softens the ledge/glow to match. */
+.dice-btn:active:not(:disabled) {
+  filter: brightness(0.97);
+  box-shadow:
+    0 1px 0 0 var(--dice-btn-ledge),
+    0 8px 18px -10px var(--dice-brand-glow),
+    inset 0 1px 0 rgba(255, 255, 255, 0.35);
+}
+
+.dice-btn:focus-visible {
+  outline: 3px solid var(--dice-gold);
+  outline-offset: 3px;
+}
+
+.dice-btn:disabled {
+  cursor: default;
+  opacity: 0.85;
+}
+
+.dice-btn--secondary {
+  --dice-btn-ledge: rgba(var(--dice-shadow-color), 0.18);
+  background: var(--dice-surface);
+  color: var(--dice-ink);
+  box-shadow:
+    0 4px 0 0 var(--dice-btn-ledge),
+    0 10px 24px -12px rgba(var(--dice-shadow-color), 0.25),
+    inset 0 0 0 1px rgba(23, 20, 15, 0.08);
+}
+
+.dice-btn--secondary:hover:not(:disabled) {
+  box-shadow:
+    0 4px 0 0 var(--dice-btn-ledge),
+    0 14px 28px -12px rgba(var(--dice-shadow-color), 0.25),
+    inset 0 0 0 1px rgba(23, 20, 15, 0.12);
+}
+
+.dice-btn-spinner {
+  width: 1.1rem;
+  height: 1.1rem;
+  border-radius: 50%;
+  border: 2.5px solid rgba(255, 255, 255, 0.4);
+  border-top-color: #fff;
+  animation: dice-spin 0.7s linear infinite;
+}
+
+@keyframes dice-spin {
+  to { transform: rotate(360deg); }
+}
+
+/* ---------------- Scratch card (ScratchCard3D.tsx and friends) ----------------
+   The 3D card + its DOM overlay stack (prize face under the metallic
+   foil). Sized in relative units so it never exceeds the viewport on any
+   device — see the plan's "mobile / one-time-only" notes. */
+
+.scratch-card-3d {
+  position: relative;
+  width: min(74vw, 300px);
+  aspect-ratio: 1.55 / 1;
+  margin: 0.5rem auto 0;
+}
+
+.scratch-card-canvas-layer {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  pointer-events: none;
+}
+
+.scratch-card-canvas-layer canvas {
+  display: block;
+  width: 100% !important;
+  height: 100% !important;
+}
+
+.scratch-card-fallback {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+}
+
+.scratch-card-fallback-panel {
+  position: absolute;
+  inset: 5%;
+}
+
+.scratch-card-header {
+  /* Sits in the ~8% margin that reveals the 3D card's material around the
+     scratch zone (see .scratch-card-zone) — a printed-on-the-card logo.
+     z-index above the zone so a larger logo can still overlap its top
+     edge slightly without ever being hidden behind the foil. */
+  position: absolute;
+  top: 2.5%;
+  left: 8%;
+  right: 8%;
+  z-index: 4;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+}
+
+.scratch-card-logo {
+  max-height: 68px;
+  max-width: 86%;
+  object-fit: contain;
+  filter: drop-shadow(0 3px 7px rgba(0, 0, 0, 0.4));
+}
+
+.scratch-card-brand-name {
+  font-family: 'Manrope', ui-sans-serif, system-ui, sans-serif;
+  font-weight: 800;
+  font-size: 24px;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.92);
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+}
+
+.scratch-card-zone {
+  /* Inset enough to leave the 3D card's own reflective material visible
+     as a frame around the foil (see ScratchCard3D.tsx's camera framing
+     comment) — without this gap, the 3D card is never actually seen
+     (always covered by the opaque foil or prize content), which defeats
+     the point of rendering one. Rounding/clipping for the whole card is
+     owned by the outer .scratch-card-3d box, so this can't ever poke
+     outside it even if this number and the camera framing drift apart. */
+  position: absolute;
+  inset: 8%;
+  z-index: 3;
+  overflow: hidden;
+  box-shadow: 0 2px 8px -3px rgba(0, 0, 0, 0.4) inset;
+}
+
+.scratch-prize-face {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.3rem;
+  padding: 0.5rem 0.75rem;
+  text-align: center;
+  overflow: hidden;
+  background: linear-gradient(160deg, #fdfaf3 0%, #f3ecdd 100%);
+}
+
+.scratch-prize-image {
+  max-height: 32%;
+  max-width: 70%;
+  object-fit: contain;
+  margin-bottom: 0.2rem;
+  filter: drop-shadow(0 6px 10px rgba(0, 0, 0, 0.12));
+}
+
+.scratch-prize-content {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.15rem;
+}
+
+.scratch-prize-amount {
+  display: flex;
+  align-items: baseline;
+  gap: 0.3rem;
+  font-family: var(--font-display);
+  font-weight: 800;
+  font-size: clamp(28px, 9vw, 40px);
+  line-height: 1;
+}
+
+.scratch-prize-currency {
+  font-size: 0.42em;
+  font-weight: 700;
+  opacity: 0.75;
+}
+
+.scratch-prize-label {
+  font-family: 'Manrope', ui-sans-serif, system-ui, sans-serif;
+  font-size: 13.5px;
+  font-weight: 600;
+  color: rgba(26, 23, 20, 0.68);
+}
+
+.scratch-prize-label--lose {
+  font-size: 15px;
+  font-weight: 700;
+  color: rgba(26, 23, 20, 0.55);
+}
+
+.scratch-shine {
+  position: absolute;
+  inset: -20% -60%;
+  z-index: 4;
+  pointer-events: none;
+  background: linear-gradient(
+    100deg,
+    rgba(255, 255, 255, 0) 35%,
+    rgba(255, 255, 255, 0.85) 50%,
+    rgba(255, 255, 255, 0) 65%
+  );
+  mix-blend-mode: screen;
+}
+
+.scratch-confetti {
+  position: absolute;
+  inset: 0;
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+}
+
+.scratch-confetti-piece {
+  position: absolute;
+  border-radius: 1px;
+}
+
+.scratch-foil-wrap {
+  position: absolute;
+  inset: 0;
+  z-index: 6;
+}
+
+.scratch-foil-layer {
+  display: block;
+  width: 100%;
+  height: 100%;
+  touch-action: none;
+  cursor: pointer;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+.scratch-loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: clamp(220px, 60vw, 300px);
+}
+
+/* Admin editor's live-preview backdrop (ScratchCardEditor.tsx). */
+.scratch-editor-preview-stage {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2rem 1rem;
+  border-radius: var(--pf-radius-md, 16px);
+  background: radial-gradient(circle at 50% 20%, #2a2c33 0%, #16171b 70%);
+}
+
+/* ---------------- Wheel (Wheel.tsx) ---------------- */
+
+.wheel-viewport {
+  position: relative;
+  display: grid;
+  place-items: center;
+  margin: clamp(1rem, 4vh, 2rem) 0;
+}
+
+.wheel-viewport--sm { width: clamp(140px, 40vw, 180px); }
+.wheel-viewport--md { width: clamp(200px, 52vw, 260px); }
+.wheel-viewport--lg { width: clamp(230px, 68vw, 320px); }
+
+.wheel-glow {
+  position: absolute;
+  inset: -8%;
+  border-radius: 50%;
+  background: radial-gradient(circle, var(--dice-brand-glow) 0%, transparent 70%);
+  filter: blur(6px);
+  pointer-events: none;
+}
+
+.wheel-disc {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 1;
+  filter: drop-shadow(0 18px 30px rgba(var(--dice-shadow-color), 0.28));
+}
+
+.wheel-rim {
+  fill: var(--dice-surface);
+  stroke: var(--dice-gold);
+  stroke-width: 4;
+}
+
+.wheel-hub {
+  fill: var(--dice-surface);
+  stroke: var(--dice-gold);
+  stroke-width: 3;
+  filter: drop-shadow(0 2px 4px rgba(var(--dice-shadow-color), 0.3));
+}
+
+.wheel-label {
+  font-family: 'Manrope', ui-sans-serif, system-ui, sans-serif;
+  font-size: 20px;
+  font-weight: 800;
+}
+
+.wheel-pointer {
+  position: absolute;
+  top: -6px;
+  left: 50%;
+  translate: -50% 0;
+  z-index: 2;
+  filter: drop-shadow(0 3px 4px rgba(var(--dice-shadow-color), 0.35));
+}
+
+/* classic — the original solid gold triangle. Its color comes from the
+   default border-top rule below; Wheel.tsx only overrides borderTopColor
+   inline for the ribbon/arrow variants, so this stays untouched. */
+.wheel-pointer--classic {
+  width: 0;
+  height: 0;
+  border-left: 14px solid transparent;
+  border-right: 14px solid transparent;
+  border-top: 22px solid var(--dice-gold);
+}
+
+/* arrow — a slimmer chevron, less "flag on a pole" than classic. */
+.wheel-pointer--arrow {
+  width: 0;
+  height: 0;
+  border-left: 8px solid transparent;
+  border-right: 8px solid transparent;
+  border-top: 26px solid var(--dice-gold);
+}
+
+/* ribbon — a small rectangular flag instead of a triangle, clipped into a
+   notched-bottom pennant shape. */
+.wheel-pointer--ribbon {
+  width: 22px;
+  height: 26px;
+  background: var(--dice-gold);
+  clip-path: polygon(0 0, 100% 0, 100% 70%, 50% 100%, 0 70%);
+}
+
+/* ---------------- Motion preference ---------------- */
+
+@media (prefers-reduced-motion: reduce) {
+  .dice-particle { animation: none !important; opacity: 0 !important; }
+  .dice-btn-spinner { animation-duration: 1.4s; }
+}

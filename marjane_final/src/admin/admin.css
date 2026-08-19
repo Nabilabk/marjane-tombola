@@ -1,0 +1,207 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap');
+
+/*
+  Premium SaaS design tokens for the admin platform — scoped under
+  .admin-shell so nothing leaks into the participant-facing app at "/".
+  Neutral gray palette + professional blue accent. No gradients, no purple.
+*/
+.admin-shell {
+  --pf-bg: #f7f7f8;
+  --pf-surface: #ffffff;
+  --pf-sunken: #f3f4f6;
+  --pf-sunken-2: #e9eaee;
+  --pf-border: #e6e7eb;
+  --pf-border-strong: #d3d5da;
+  --pf-ink: #17181c;
+  --pf-ink-muted: #5d6068;
+  --pf-ink-faint: #9b9ea7;
+
+  --pf-accent: #2d6be7;
+  --pf-accent-ink: #ffffff;
+  --pf-accent-soft: #eaf1fe;
+  --pf-accent-strong: #1f56c9;
+
+  --pf-success: #0e9f6e;
+  --pf-success-soft: #e7f8f1;
+  --pf-warning: #b45309;
+  --pf-warning-soft: #fdf3e7;
+  --pf-danger: #dc2626;
+  --pf-danger-soft: #fdecec;
+
+  --pf-radius-xs: 5px;
+  --pf-radius-sm: 8px;
+  --pf-radius-md: 12px;
+  --pf-radius-lg: 16px;
+  --pf-radius-xl: 22px;
+
+  --pf-shadow-xs: 0 1px 2px rgba(16, 17, 20, 0.04);
+  --pf-shadow-sm: 0 1px 2px rgba(16, 17, 20, 0.05), 0 1px 3px rgba(16, 17, 20, 0.04);
+  --pf-shadow-md: 0 4px 12px -2px rgba(16, 17, 20, 0.08), 0 2px 4px -1px rgba(16, 17, 20, 0.04);
+  --pf-shadow-lg: 0 20px 48px -12px rgba(16, 17, 20, 0.18), 0 4px 12px rgba(16, 17, 20, 0.06);
+  --pf-shadow-focus: 0 0 0 3px rgba(45, 107, 231, 0.22);
+
+  --pf-sidebar-w: 240px;
+  --pf-sidebar-w-collapsed: 64px;
+  --pf-topbar-h: 60px;
+
+  --font-platform-sans: 'Inter', ui-sans-serif, system-ui, -apple-system, sans-serif;
+  --font-platform-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, monospace;
+
+  min-height: 100vh;
+  background: var(--pf-bg);
+  color: var(--pf-ink);
+  font-family: var(--font-platform-sans);
+  font-size: 14px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+.admin-shell *,
+.admin-shell *::before,
+.admin-shell *::after {
+  box-sizing: border-box;
+}
+
+.admin-shell ::selection {
+  background: color-mix(in srgb, var(--pf-accent) 18%, transparent);
+}
+
+.admin-shell ::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+.admin-shell ::-webkit-scrollbar-track {
+  background: transparent;
+}
+.admin-shell ::-webkit-scrollbar-thumb {
+  background: var(--pf-sunken-2);
+  border-radius: 999px;
+}
+.admin-shell ::-webkit-scrollbar-thumb:hover {
+  background: var(--pf-border-strong);
+}
+
+.admin-shell :focus-visible {
+  outline: 2px solid var(--pf-accent);
+  outline-offset: 2px;
+  border-radius: 6px;
+}
+
+.admin-shell .tabular {
+  font-variant-numeric: tabular-nums;
+}
+
+/* Higher-specificity override so Tailwind's .font-mono resolves to JetBrains Mono */
+.admin-shell .font-mono {
+  font-family: var(--font-platform-mono);
+}
+
+/* Range inputs — premium feel */
+.admin-shell input[type='range'] {
+  -webkit-appearance: none;
+  appearance: none;
+  height: 4px;
+  border-radius: 999px;
+  background: var(--pf-sunken-2);
+  cursor: pointer;
+}
+.admin-shell input[type='range']::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: #fff;
+  border: 2px solid var(--pf-accent);
+  box-shadow: 0 1px 3px rgba(16, 17, 20, 0.18);
+  transition: transform 0.15s ease;
+}
+.admin-shell input[type='range']::-webkit-slider-thumb:hover {
+  transform: scale(1.12);
+}
+
+/* Color input swatch */
+.admin-shell input[type='color'] {
+  -webkit-appearance: none;
+  appearance: none;
+  padding: 0;
+  border: 1px solid var(--pf-border-strong);
+  border-radius: 8px;
+  background: transparent;
+  cursor: pointer;
+}
+.admin-shell input[type='color']::-webkit-color-swatch-wrapper {
+  padding: 3px;
+}
+.admin-shell input[type='color']::-webkit-color-swatch {
+  border: none;
+  border-radius: 5px;
+}
+
+/* Skeleton shimmer */
+@keyframes pf-shimmer {
+  0% {
+    background-position: -420px 0;
+  }
+  100% {
+    background-position: 420px 0;
+  }
+}
+.pf-skeleton {
+  border-radius: var(--pf-radius-sm);
+  background: linear-gradient(90deg, var(--pf-sunken) 25%, #f0f1f4 37%, var(--pf-sunken) 63%);
+  background-size: 420px 100%;
+  animation: pf-shimmer 1.4s ease infinite;
+}
+
+/* Fade-in helper */
+@keyframes pf-fade-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+.pf-fade-in {
+  animation: pf-fade-in 0.32s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+/* Hover lift for cards */
+.pf-hover-lift {
+  transition: transform 0.18s ease, box-shadow 0.18s ease, border-color 0.18s ease;
+}
+.pf-hover-lift:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--pf-shadow-md);
+}
+
+/* Notification dot pulse */
+@keyframes pf-pulse {
+  0% {
+    box-shadow: 0 0 0 0 rgba(220, 38, 38, 0.4);
+  }
+  70% {
+    box-shadow: 0 0 0 6px rgba(220, 38, 38, 0);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(220, 38, 38, 0);
+  }
+}
+.pf-pulse {
+  animation: pf-pulse 2s infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .admin-shell *,
+  .admin-shell *::before,
+  .admin-shell *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+  }
+}
+

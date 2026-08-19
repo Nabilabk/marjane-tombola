@@ -1,0 +1,18 @@
+{
+  "mode": "per_article",
+  "minMatches": 1,
+  "articles": [
+    { "code": "3097103", "libelle": "OLD SPICE AP&DEO CAPTAIN 73ML", "marq": "OLD SPICE", "fournisseur": "P&G DISTRIBUTION MOROCCO", "rayon": "BEAUTE-SANTE", "price": 49.95, "ruleType": "quantity", "threshold": 1 },
+    { "code": "3097091", "libelle": "OLD SPICE AP&DEO PURE SPORT 85ML", "marq": "OLD SPICE", "fournisseur": "P&G DISTRIBUTION MOROCCO", "rayon": "BEAUTE-SANTE", "price": 49.95, "ruleType": "quantity", "threshold": 1 },
+    { "code": "3097092", "libelle": "OLD SPICE AP&DEO SWAGGER 73ML", "marq": "OLD SPICE", "fournisseur": "P&G DISTRIBUTION MOROCCO", "rayon": "BEAUTE-SANTE", "price": 49.95, "ruleType": "quantity", "threshold": 1 },
+    { "code": "3097086", "libelle": "OLD SPICE BAIN DOUCHE CAPTAIN 473ML", "marq": "OLD SPICE", "fournisseur": "P&G DISTRIBUTION MOROCCO", "rayon": "BEAUTE-SANTE", "price": 64.95, "ruleType": "quantity", "threshold": 1 },
+    { "code": "3097085", "libelle": "OLD SPICE BAIN DOUCHE PURE SPORT 532ML", "marq": "OLD SPICE", "fournisseur": "P&G DISTRIBUTION MOROCCO", "rayon": "BEAUTE-SANTE", "price": 64.95, "ruleType": "quantity", "threshold": 1 },
+    { "code": "3097087", "libelle": "OLD SPICE BAIN DOUCHE SWAGGER 473ML", "marq": "OLD SPICE", "fournisseur": "P&G DISTRIBUTION MOROCCO", "rayon": "BEAUTE-SANTE", "price": 64.95, "ruleType": "quantity", "threshold": 1 },
+    { "code": "3097089", "libelle": "OLD SPICE DEO CAPTAIN 85ML", "marq": "OLD SPICE", "fournisseur": "P&G DISTRIBUTION MOROCCO", "rayon": "BEAUTE-SANTE", "price": 49.95, "ruleType": "quantity", "threshold": 1 },
+    { "code": "3097088", "libelle": "OLD SPICE DEO PURE SPORT 85ML", "marq": "OLD SPICE", "fournisseur": "P&G DISTRIBUTION MOROCCO", "rayon": "BEAUTE-SANTE", "price": 49.95, "ruleType": "quantity", "threshold": 1 },
+    { "code": "3097090", "libelle": "OLD SPICE DEO SWAGGER 85ML", "marq": "OLD SPICE", "fournisseur": "P&G DISTRIBUTION MOROCCO", "rayon": "BEAUTE-SANTE", "price": 49.95, "ruleType": "quantity", "threshold": 1 },
+    { "code": "3122731", "libelle": "OLD SPICE SPRAY CAPTAIN 150ML", "marq": "OLD SPICE", "fournisseur": "P&G DISTRIBUTION MOROCCO", "rayon": "BEAUTE-SANTE", "price": 42.95, "ruleType": "quantity", "threshold": 1 },
+    { "code": "3122729", "libelle": "OLD SPICE SPRAY ORIGINAL 150ML", "marq": "OLD SPICE", "fournisseur": "P&G DISTRIBUTION MOROCCO", "rayon": "BEAUTE-SANTE", "price": 42.95, "ruleType": "quantity", "threshold": 1 },
+    { "code": "3122730", "libelle": "OLD SPICE SPRAY WHITEWATER 150ML", "marq": "OLD SPICE", "fournisseur": "P&G DISTRIBUTION MOROCCO", "rayon": "BEAUTE-SANTE", "price": 42.95, "ruleType": "quantity", "threshold": 1 }
+  ]
+}

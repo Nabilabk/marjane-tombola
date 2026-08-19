@@ -1,0 +1,9 @@
+{
+  "navigationFallback": {
+    "rewrite": "/index.html",
+    "exclude": ["/assets/*", "/sounds/*", "*.{png,jpg,jpeg,svg,ico,pdf,mp3,css,js}"]
+  },
+  "mimeTypes": {
+    ".json": "application/json"
+  }
+}
