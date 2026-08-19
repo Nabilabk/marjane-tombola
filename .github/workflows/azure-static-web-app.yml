@@ -1,16 +1,22 @@
 name: Deploy frontend to Azure Static Web Apps
 
+# Auto-trigger (push/pull_request) is off until the Azure Static Web App
+# resource exists and AZURE_STATIC_WEB_APPS_API_TOKEN is set as a repo
+# secret — otherwise every push fails for lack of anything to deploy to.
+# Run manually via the Actions tab once that's set up, or restore the
+# `push`/`pull_request` triggers below for auto-deploy on every push.
 on:
-  push:
-    branches: [main]
-    paths:
-      - "marjane_final/**"
-      - ".github/workflows/azure-static-web-app.yml"
-  pull_request:
-    types: [opened, synchronize, reopened, closed]
-    branches: [main]
-    paths:
-      - "marjane_final/**"
+  workflow_dispatch:
+  # push:
+  #   branches: [main]
+  #   paths:
+  #     - "marjane_final/**"
+  #     - ".github/workflows/azure-static-web-app.yml"
+  # pull_request:
+  #   types: [opened, synchronize, reopened, closed]
+  #   branches: [main]
+  #   paths:
+  #     - "marjane_final/**"
 
 jobs:
   build_and_deploy:

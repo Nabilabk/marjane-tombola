@@ -1,12 +1,16 @@
 name: Deploy backend to Azure App Service
 
+# Auto-trigger (push) is off until the Azure App Service resource exists
+# and AZURE_WEBAPP_PUBLISH_PROFILE/AZURE_WEBAPP_NAME are set — otherwise
+# every push fails for lack of anything to deploy to. Run manually via the
+# Actions tab once that's set up, or restore the `push` trigger below.
 on:
-  push:
-    branches: [main]
-    paths:
-      - "backend/**"
-      - ".github/workflows/azure-app-service-backend.yml"
   workflow_dispatch:
+  # push:
+  #   branches: [main]
+  #   paths:
+  #     - "backend/**"
+  #     - ".github/workflows/azure-app-service-backend.yml"
 
 jobs:
   build_and_deploy:
