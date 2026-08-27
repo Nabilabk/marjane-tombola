@@ -18,6 +18,7 @@ import { RequireAuth } from './components/RequireAuth'
 import { RequireSuperAdmin } from './components/RequireSuperAdmin'
 import { RequireCampaignAccess } from './components/RequireCampaignAccess'
 import { AdminLangProvider } from './lib/adminI18n'
+import { resetAdminSiteChrome } from '../engine/theme'
 
 // Prizes, Rewards, Tickets, Participants, Analytics and Languages used to be
 // six separate sidebar pages. They're now tabs on Dashboard (Overview) and
@@ -45,6 +46,16 @@ export default function AdminApp() {
       window.removeEventListener('dragover', preventDefault)
       window.removeEventListener('drop', preventDefault)
     }
+  }, [])
+
+  // The admin tab must always stay "Marjane Campaign Studio" with the
+  // Marjane mark — never a visited campaign's own name/logo (that's the
+  // public site's job, see App.tsx/PublicCampaign.tsx). This only matters
+  // for a same-tab SPA navigation landing here right after a public
+  // `/:slug` route set the tab chrome to that campaign's branding; a fresh
+  // load already has the right defaults from index.html.
+  useEffect(() => {
+    resetAdminSiteChrome()
   }, [])
 
   return (

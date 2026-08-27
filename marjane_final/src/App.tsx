@@ -7,14 +7,22 @@
   use the SAME rendering engine and the SAME data.
 */
 
+import { useEffect } from 'react'
 import { usePlatformStore } from './platform/store'
 import CampaignEngine from './engine/CampaignEngine'
+import { applyPublicSiteChrome } from './engine/theme'
 
 export default function App() {
   // Default public route → Campaign #1 (the real Marjane website).
   const campaign = usePlatformStore((s) =>
     s.campaigns.find((c) => c.slug === 'marjane') ?? s.campaigns[0],
   )
+
+  // Tab title/favicon for the real public site only — never the admin, see
+  // engine/theme.ts's applyPublicSiteChrome.
+  useEffect(() => {
+    if (campaign) applyPublicSiteChrome(campaign)
+  }, [campaign])
 
   if (!campaign) {
     return (

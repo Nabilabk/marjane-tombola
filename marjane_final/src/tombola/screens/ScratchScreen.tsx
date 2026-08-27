@@ -6,7 +6,6 @@ import ParticleField from './components/particle-field.tsx'
 import GameButton from './components/game-button.tsx'
 import ScratchCard3D from './components/scratch/ScratchCard3D'
 import EditableText from '../EditableText'
-import { playSound } from '../sound'
 import type { ScratchCardCopy, ScratchCardTheme } from './components/scratch/types'
 import './dice-theme.css'
 
@@ -70,7 +69,6 @@ export default function ScratchScreen({
   }, [])
 
   function handleRevealed(won: number) {
-    playSound(won > 0 ? 'win' : 'cardFlip')
     setPhase('done')
     setTimeout(() => onResult(won), 700)
   }

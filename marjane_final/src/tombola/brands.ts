@@ -32,8 +32,12 @@ export const BRANDS: Record<string, Brand> = {
     name: 'Marjane',
     logoUrl: '/logo.png',
     productLine: 'Carte de fidélité',
-    packshot:
-      'https://images.unsplash.com/photo-1753354868507-729241ac48eb?w=1000&h=1200&fit=crop&auto=format',
+    // PLACEHOLDER — generic stock photo, not real Marjane product/prize
+    // photography. Self-hosted (was a hotlinked images.unsplash.com URL) so
+    // production doesn't depend on a third-party CDN staying up forever,
+    // but the actual image still needs swapping for the real thing before
+    // this goes in front of customers. Replace public/packshot-placeholder.jpg.
+    packshot: '/packshot-placeholder.jpg',
     colors: { primary: '#0C2340', secondary: '#F5A623', accent: '#F27C38' },
     threshold: 100,
     prizes: [20, 50, 0, 100, 30, 200, 10, 75],

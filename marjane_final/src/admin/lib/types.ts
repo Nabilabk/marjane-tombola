@@ -9,7 +9,7 @@
 
 import type { GameId } from '../../platform/types'
 
-export type WebsiteStatus = 'draft' | 'published' | 'maintenance'
+export type WebsiteStatus = 'draft' | 'published' | 'maintenance' | 'ended'
 export type TemplateId = 'modern' | 'luxury' | 'corporate' | 'minimal'
 
 export interface WebsiteTheme {

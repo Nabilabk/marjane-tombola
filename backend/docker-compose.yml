@@ -1,15 +1,40 @@
-version: "3.8"
-
 services:
   mysql:
     image: mysql:8.0
     environment:
-      MYSQL_ROOT_PASSWORD: "rootpass"
-      MYSQL_DATABASE: "tombola"
+      # Reuses the same MYSQL_PASSWORD the app itself connects with (see
+      # .env) as MySQL's root password — one value to keep in sync instead
+      # of two, since the app's default MYSQL_USER is already "root". If
+      # you've set MYSQL_USER to something else in .env, create that user
+      # against this root account separately.
+      MYSQL_ROOT_PASSWORD: ${MYSQL_PASSWORD:?Set MYSQL_PASSWORD in backend/.env first}
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-tombola}
     ports:
       - "3306:3306"
     volumes:
       - mysql_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-uroot", "-p${MYSQL_PASSWORD}"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    restart: unless-stopped
+
+  backend:
+    build: .
+    env_file: .env
+    environment:
+      # Override just the host/port from .env (which points at 127.0.0.1
+      # for running the backend directly on your machine) — inside compose's
+      # network, the DB is reachable at the `mysql` service name instead.
+      MYSQL_HOST: mysql
+      MYSQL_PORT: "3306"
+    ports:
+      - "8000:8000"
+    depends_on:
+      mysql:
+        condition: service_healthy
+    restart: unless-stopped
 
 volumes:
   mysql_data:

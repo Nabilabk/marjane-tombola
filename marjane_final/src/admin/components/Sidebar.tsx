@@ -77,12 +77,23 @@ export function Sidebar({
         'border-e border-[var(--pf-border)] transition-[width] duration-200 ease-out',
       )}
     >
-      {/* Brand */}
+      {/* Brand — mirrors the managed website's own identity (its logo and
+          --pf-accent, or its theme.primary color when no logo is set) so the
+          shell visibly reads as "the control panel for THIS brand", not a
+          generic tool that happens to have Marjane's data loaded. */}
       <div className={cn('flex h-[60px] shrink-0 items-center gap-2.5 border-b border-[var(--pf-border)] px-4', collapsed && !mobile && 'justify-center px-0')}>
         {!collapsed || mobile ? (
           <>
-            <Link to={`/admin/site/${siteId}`} className="flex h-8 w-8 shrink-0 items-center justify-center rounded-[var(--pf-radius-sm)] bg-[var(--pf-accent)] text-white">
-              <Sparkles className="h-4 w-4" />
+            <Link
+              to={`/admin/site/${siteId}`}
+              className="flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden rounded-[var(--pf-radius-sm)] text-white"
+              style={{ background: website?.theme.logoUrl ? '#fff' : website?.theme.primary || 'var(--pf-accent)' }}
+            >
+              {website?.theme.logoUrl ? (
+                <img src={website.theme.logoUrl} alt={website.name} className="h-full w-full object-contain p-1" />
+              ) : (
+                <Sparkles className="h-4 w-4" />
+              )}
             </Link>
             <div className="min-w-0">
               <div className="truncate text-[13.5px] font-semibold text-[var(--pf-ink)]">{website?.name ?? t('sidebar.workspace')}</div>
@@ -92,8 +103,16 @@ export function Sidebar({
             </div>
           </>
         ) : (
-          <Link to={`/admin/site/${siteId}`} className="flex h-8 w-8 shrink-0 items-center justify-center rounded-[var(--pf-radius-sm)] bg-[var(--pf-accent)] text-white">
-            <Sparkles className="h-4 w-4" />
+          <Link
+            to={`/admin/site/${siteId}`}
+            className="flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden rounded-[var(--pf-radius-sm)] text-white"
+            style={{ background: website?.theme.logoUrl ? '#fff' : website?.theme.primary || 'var(--pf-accent)' }}
+          >
+            {website?.theme.logoUrl ? (
+              <img src={website.theme.logoUrl} alt={website.name} className="h-full w-full object-contain p-1" />
+            ) : (
+              <Sparkles className="h-4 w-4" />
+            )}
           </Link>
         )}
       </div>

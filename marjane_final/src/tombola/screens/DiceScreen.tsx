@@ -7,7 +7,6 @@ import ParticleField from './components/particle-field.tsx'
 import ResultCard from './components/result-card.tsx'
 import GameButton from './components/game-button.tsx'
 import EditableText from '../EditableText'
-import { playSound } from '../sound'
 import type { CardsTheme } from './components/cardsTheme'
 import './dice-theme.css'
 
@@ -46,7 +45,6 @@ export default function DiceScreen({
     setPhase('rolling')
     setDiceValue(null)
     setRollError(false)
-    playSound('diceRoll')
 
     try {
       const response = await fetch(`${API_BASE}/api/dice/roll`, {

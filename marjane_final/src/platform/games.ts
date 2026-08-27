@@ -104,6 +104,18 @@ export const GAMES: Record<GameId, GameDefinition> = {
     defaultSettings: { chests: 3 },
     defaultPrizes: [0, 100, 200, 500],
   },
+  raffle: {
+    id: 'raffle',
+    name: 'Tirage au sort',
+    description: 'No mini-game — scanning the receipt enters the player directly into a raffle draw; winners are picked later by the admin.',
+    // Unused: FLOWS.raffle (engine/CampaignEngine.tsx) never routes to a
+    // "game" screen between scan and result, so this renderer is never
+    // mounted. Kept only so GameDefinition stays fully populated.
+    renderer: CardsRenderer,
+    configFields: [],
+    defaultSettings: {},
+    defaultPrizes: [],
+  },
 }
 
 export function getGame(id: GameId): GameDefinition {

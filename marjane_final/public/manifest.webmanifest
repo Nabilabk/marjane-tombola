@@ -1,0 +1,14 @@
+{
+  "name": "Marjane Campaign Studio",
+  "short_name": "Marjane Tombola",
+  "description": "Scannez votre ticket de caisse et tentez votre chance à la tombola Marjane.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#fcfaf6",
+  "theme_color": "#0C2340",
+  "orientation": "portrait",
+  "lang": "fr",
+  "icons": [
+    { "src": "/marjane-mark.png", "sizes": "281x281", "type": "image/png", "purpose": "any" }
+  ]
+}

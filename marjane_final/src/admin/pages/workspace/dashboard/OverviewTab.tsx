@@ -1,10 +1,11 @@
 import { Link, useParams } from 'react-router-dom'
 import { usePlatformStore } from '../../../lib/store'
+import { usePlatformStore as useCampaignStore } from '../../../../platform/store'
 import { useShallow } from 'zustand/react/shallow'
+import { useCampaignAnalytics } from '../../../lib/useCampaignAnalytics'
 import { Card, Badge, EmptyState } from '../../../components/ui/Basics'
 import { StatCard } from '../../../components/ui/StatCard'
 import { Button } from '../../../components/ui/Button'
-import { dailyParticipation } from '../../../lib/mock-data'
 import {
   AreaChart,
   Area,
@@ -45,33 +46,33 @@ export default function OverviewTab() {
   const website = usePlatformStore((s) => s.websites.find((w) => w.id === siteId))
   const campaigns = usePlatformStore(useShallow((s) => s.campaignsFor(siteId!)))
   const activity = usePlatformStore(useShallow((s) => s.activityFor(siteId!)))
+  const slug = useCampaignStore((s) => s.campaigns.find((c) => c.id === siteId))?.slug
+  const liveStats = useCampaignAnalytics(slug, 14)
   const { t } = useAdminLang()
 
   if (!website) return null
 
-  const data = dailyParticipation(website.name.length)
-
   const stats = [
     {
       label: t('sidebar.participants'),
-      value: website.stats.participants.toLocaleString('fr-FR'),
-      delta: website.stats.participants > 0 ? '+12%' : '—',
-      deltaTone: website.stats.participants > 0 ? ('success' as const) : ('neutral' as const),
+      value: liveStats.participants.toLocaleString('fr-FR'),
+      delta: liveStats.participants > 0 ? '+12%' : '—',
+      deltaTone: liveStats.participants > 0 ? ('success' as const) : ('neutral' as const),
       icon: <Users className="h-4 w-4" />,
     },
     {
       label: t('overviewTab.rewardsWon'),
-      value: website.stats.winners.toLocaleString('fr-FR'),
-      delta: website.stats.winners > 0 ? '+15%' : '—',
-      deltaTone: website.stats.winners > 0 ? ('success' as const) : ('neutral' as const),
+      value: liveStats.winners.toLocaleString('fr-FR'),
+      delta: liveStats.winners > 0 ? '+15%' : '—',
+      deltaTone: liveStats.winners > 0 ? ('success' as const) : ('neutral' as const),
       icon: <Gift className="h-4 w-4" />,
     },
     {
       label: t('overviewTab.conversionRate'),
-      value: String(website.stats.conversion),
+      value: String(liveStats.conversion),
       suffix: '%',
-      delta: website.stats.conversion > 0 ? '+2.4%' : '—',
-      deltaTone: website.stats.conversion > 0 ? ('success' as const) : ('neutral' as const),
+      delta: liveStats.conversion > 0 ? '+2.4%' : '—',
+      deltaTone: liveStats.conversion > 0 ? ('success' as const) : ('neutral' as const),
       icon: <TrendingUp className="h-4 w-4" />,
     },
   ]
@@ -96,7 +97,7 @@ export default function OverviewTab() {
           </div>
           <div className="h-[240px]">
             <ResponsiveContainer width="100%" height="100%">
-              <AreaChart data={data} margin={{ left: -20, right: 8, top: 4 }}>
+              <AreaChart data={liveStats.dailyTrend} margin={{ left: -20, right: 8, top: 4 }}>
                 <defs>
                   <linearGradient id="fillP" x1="0" y1="0" x2="0" y2="1">
                     <stop offset="0%" stopColor="var(--pf-accent)" stopOpacity={0.16} />
@@ -161,7 +162,10 @@ export default function OverviewTab() {
                 <div className="min-w-0">
                   <div className="truncate text-[13px] font-medium text-[var(--pf-ink)]">{c.name}</div>
                   <div className="mt-0.5 font-mono text-[11px] text-[var(--pf-ink-faint)] tabular">
-                    {c.participants.toLocaleString('fr-FR')} {t('sidebar.participants').toLowerCase()}
+                    {/* campaignsFor() is at most one entry (this platform is
+                        one campaign per site) — liveStats already covers it,
+                        and is real backend data unlike c.participants. */}
+                    {liveStats.participants.toLocaleString('fr-FR')} {t('sidebar.participants').toLowerCase()}
                   </div>
                 </div>
                 <Badge tone={c.status === 'active' ? 'success' : c.status === 'draft' ? 'neutral' : 'warning'} dot>

@@ -14,6 +14,7 @@ import { useEffect, useState } from 'react'
 import { useParams, Link } from 'react-router-dom'
 import { usePlatformStore } from '../platform/store'
 import CampaignEngine from '../engine/CampaignEngine'
+import { applyPublicSiteChrome } from '../engine/theme'
 
 export default function PublicCampaign() {
   const { slug } = useParams()
@@ -21,6 +22,13 @@ export default function PublicCampaign() {
     s.campaigns.find((c) => c.slug === slug),
   )
   const [notFound, setNotFound] = useState(false)
+
+  // Tab title/favicon for the real public site only — never the admin, see
+  // engine/theme.ts's applyPublicSiteChrome. This is what makes /knorr show
+  // Knorr's own name/logo in the browser tab instead of Marjane's.
+  useEffect(() => {
+    if (campaign) applyPublicSiteChrome(campaign)
+  }, [campaign])
 
   // If the campaign doesn't exist, show a graceful 404 with a pointer to
   // the admin — this makes it clear the platform is the single source.

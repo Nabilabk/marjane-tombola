@@ -10,7 +10,7 @@
 */
 
 import { create } from 'zustand'
-import { repository } from './repository'
+import { repository, STORAGE_KEY } from './repository'
 import { buildMarjaneCampaign } from './seed'
 import { migrateLegacyPlan } from './migrations'
 import { uniformProbabilities } from './probabilities'
@@ -181,9 +181,29 @@ function backfillLifecycleFields() {
   }
 }
 
+// Cross-tab sync: each browser tab/window that loads this module gets its
+// own in-memory zustand instance, seeded once from `repository.list()` at
+// creation time. Editing a campaign in an admin tab writes straight to
+// localStorage, but an already-open public `/marjane` tab has no way to
+// know that happened — `set()` calls only notify subscribers within the
+// SAME JS runtime. The browser's `storage` event is the platform's own
+// mechanism for this: it fires in every OTHER tab on the same origin
+// whenever one tab writes to the watched localStorage key (never in the
+// tab that made the write), so re-reading the repository here is what
+// makes an admin edit show up on an already-open public tab without a
+// manual refresh.
+function subscribeToCrossTabChanges(set: (partial: Partial<PlatformState>) => void) {
+  if (typeof window === 'undefined') return
+  window.addEventListener('storage', (event) => {
+    if (event.key !== STORAGE_KEY) return
+    set({ campaigns: repository.list() })
+  })
+}
+
 export const usePlatformStore = create<PlatformState>()((set, get, _store) => {
   ensureSeed()
   backfillLifecycleFields()
+  subscribeToCrossTabChanges(set)
 
   return {
     campaigns: repository.list(),

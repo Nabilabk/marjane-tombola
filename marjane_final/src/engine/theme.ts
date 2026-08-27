@@ -61,18 +61,48 @@ export function applyCampaignTheme(campaign: Campaign) {
 
   // Dynamic radius + spacing for the whole app
   root.style.setProperty('--radius', `${theme.radius}px`)
+}
 
-  // Favicon
-  const favicon = theme.faviconUrl || campaign.brand.faviconUrl
-  if (favicon) {
-    let link = document.querySelector<HTMLLinkElement>("link[rel='icon']")
-    if (!link) {
-      link = document.createElement('link')
-      link.rel = 'icon'
-      document.head.appendChild(link)
-    }
-    link.href = favicon
+const DEFAULT_TITLE = 'Marjane Campaign Studio'
+const DEFAULT_FAVICON = '/marjane-mark.png'
+
+/**
+ * Browser tab title + favicon — deliberately NOT part of `applyCampaignTheme`
+ * above, because that function also runs for the admin's in-page preview
+ * (ThemeEditor/ScreensTab embed the same CampaignEngine). The admin tab must
+ * always stay "Marjane Campaign Studio" with the Marjane mark — only the
+ * real public site (App.tsx's `/` and PublicCampaign.tsx's `/:slug`, e.g.
+ * `/knorr`) should show the visited campaign's own name/logo, since that's
+ * what a visitor — not an admin — actually sees in their browser tab.
+ */
+export function applyPublicSiteChrome(campaign: Campaign) {
+  document.title = campaign.name || DEFAULT_TITLE
+
+  // Falls back to the campaign's logo when no dedicated favicon was
+  // uploaded, since most campaigns only ever set a logo (Theme editor) and
+  // would otherwise keep showing the generic Marjane mark forever.
+  const favicon =
+    campaign.theme.faviconUrl || campaign.brand.faviconUrl || campaign.theme.logoUrl || campaign.brand.logoUrl
+  setFaviconHref(favicon || DEFAULT_FAVICON)
+}
+
+/** Restores the admin's own tab chrome — call on mount of the admin app so a
+ *  same-tab visit to a public campaign route earlier in the session (SPA
+ *  navigation, no full reload) doesn't leave the admin tab titled/iconed as
+ *  that campaign. */
+export function resetAdminSiteChrome() {
+  document.title = DEFAULT_TITLE
+  setFaviconHref(DEFAULT_FAVICON)
+}
+
+function setFaviconHref(href: string) {
+  let link = document.querySelector<HTMLLinkElement>("link[rel='icon']")
+  if (!link) {
+    link = document.createElement('link')
+    link.rel = 'icon'
+    document.head.appendChild(link)
   }
+  link.href = href
 }
 
 export interface BrandView {

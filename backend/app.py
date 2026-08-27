@@ -34,15 +34,25 @@ import jwt
 import pymysql
 import pymysql.cursors
 import requests
-from fastapi import Depends, FastAPI, File, Form, Header, HTTPException, UploadFile
+from fastapi import Depends, FastAPI, File, Form, Header, HTTPException, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
+from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi.errors import RateLimitExceeded
+from slowapi.middleware import SlowAPIMiddleware
+from slowapi.util import get_remote_address
 
 import catalog
 from line_items import evaluate_product_rules, extract_line_items, match_receipt_items
 
 PICK_LIMIT_DEFAULT = 3
 LOSE_PRIZE_TEXT = ("Tentez votre chance encore une fois", "جرّب حظك مرة أخرى")
+
+# A real phone photo of a receipt is typically 1-5 MB; 10 MB gives real
+# users headroom while still bounding memory use per request. Rate limiting
+# caps how OFTEN someone can hit this endpoint, not how big a single upload
+# can be — this is the size half of that same protection.
+MAX_RECEIPT_IMAGE_BYTES = 10 * 1024 * 1024
 
 OCR_API_KEY = os.environ.get("OCR_API_KEY", "helloworld")
 OCR_API_URL = "https://api.ocr.space/parse/image"
@@ -59,6 +69,35 @@ ADMIN_JWT_ALGORITHM = "HS256"
 ADMIN_TOKEN_TTL_HOURS = 12
 SUPER_ADMIN_EMAIL = os.environ.get("SUPER_ADMIN_EMAIL", "admin@campaignhub.ma")
 SUPER_ADMIN_PASSWORD = os.environ.get("SUPER_ADMIN_PASSWORD", "admin123")
+
+# Set APP_ENV=production on the real deployment (Azure App Service
+# Configuration → Application settings) — nothing here defaults to it, so
+# local dev is unaffected either way. Its only job is the check right below.
+APP_ENV = os.environ.get("APP_ENV", "development")
+
+# Anyone can read the two hardcoded fallback values above straight off
+# GitHub — if either is still active, that's either a forgeable admin JWT
+# or a literal "admin123" super_admin login. Loud warning always; outright
+# refusal to boot if APP_ENV=production says this is meant to be a real
+# deployment, not someone's local machine.
+_insecure_defaults_active = [
+    name
+    for name, value, default in (
+        ("ADMIN_JWT_SECRET", ADMIN_JWT_SECRET, "dev-only-insecure-secret-change-me"),
+        ("SUPER_ADMIN_PASSWORD", SUPER_ADMIN_PASSWORD, "admin123"),
+    )
+    if value == default
+]
+if _insecure_defaults_active:
+    _warning = (
+        f"INSECURE DEFAULT(S) STILL ACTIVE: {', '.join(_insecure_defaults_active)}. "
+        "Set real values via backend/.env locally, or your host's env config in "
+        "production — see DEPLOY.md. Anyone who reads this file's fallback values "
+        "could forge an admin session or log in as super_admin with 'admin123'."
+    )
+    if APP_ENV == "production":
+        raise RuntimeError(_warning)
+    print(f"\n{'!' * 78}\n!!  WARNING: {_warning}\n{'!' * 78}\n")
 
 # RLock, not Lock: play_round/participate hold this for their whole body
 # AND call get_campaign_conn(slug) inside that body, which itself acquires
@@ -503,6 +542,15 @@ class ParticipationOut(BaseModel):
     prize_ar: str
     participation_date: str
 
+# Default prize label written on a manual "Tirer au sort" draw when the
+# admin doesn't type a custom one (see draw_random_winner below).
+DEFAULT_RAFFLE_PRIZE_TEXT = ("Gagnant du tirage au sort", "فائز بالسحب العشوائي")
+
+class DrawWinnerRequest(BaseModel):
+    exclude_winners: bool = False
+    prize_fr: Optional[str] = None
+    prize_ar: Optional[str] = None
+
 # --------------------------------------------------------------------------
 # Product eligibility rules — which catalog articles (and price/quantity
 # thresholds) a receipt must contain to qualify, as configured by the admin.
@@ -598,6 +646,14 @@ class LoginResponse(BaseModel):
     token: str
     user: AdminUserOut
 
+class AuditLogEntryOut(BaseModel):
+    id: int
+    admin_id: Optional[int] = None
+    admin_email: str
+    action: str
+    detail: str
+    created_at: str
+
 class AdminUserCreate(BaseModel):
     name: str
     email: str
@@ -618,12 +674,45 @@ class AdminUserUpdate(BaseModel):
 
 app = FastAPI(title="Tombola Prize Engine")
 
+# Comma-separated list of origins allowed to call this API, e.g.
+# "https://marjane-tombola.azurestaticapps.net,https://tombola.marjane.ma".
+# Defaults to the local Vite dev server so `npm run dev` keeps working with
+# zero setup — a deployed frontend MUST set this env var to its real origin
+# before going live; without it, "*" would let any website call the admin
+# API (JWT-in-header, so not a CSRF risk, but still an open door for
+# scraping/abuse). See DEPLOY.md.
+_default_origins = "http://127.0.0.1:8443,http://localhost:8443,http://127.0.0.1:5173,http://localhost:5173"
+CORS_ALLOWED_ORIGINS = [
+    o.strip() for o in os.environ.get("CORS_ALLOWED_ORIGINS", _default_origins).split(",") if o.strip()
+]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=CORS_ALLOWED_ORIGINS,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# --------------------------------------------------------------------------
+# Rate limiting — in-memory, per-process (fine at this app's current single-
+# instance scale; would need a shared backend like Redis if this ever runs
+# behind more than one worker/instance). Applied only to the public,
+# unauthenticated endpoints below that either cost money (OCR) or hand out
+# something of value (a tombola entry), to blunt scripted abuse without
+# throttling normal admin dashboard usage.
+# --------------------------------------------------------------------------
+limiter = Limiter(key_func=get_remote_address)
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+app.add_middleware(SlowAPIMiddleware)
+
+@app.get("/health")
+def health():
+    """Cheap liveness check for Azure App Service / uptime monitors — no DB
+    hit, so it still answers even if MySQL is unreachable (which is exactly
+    the case you want a monitor to be able to tell apart from "process is
+    dead")."""
+    return {"status": "ok"}
 
 # --------------------------------------------------------------------------
 # Admin auth — password hashing, JWT issuing/verification, and the two
@@ -740,6 +829,16 @@ def init_master_db() -> None:
                 active TINYINT(1) NOT NULL DEFAULT 1,
                 created_at VARCHAR(64) NOT NULL
             );
+
+            CREATE TABLE IF NOT EXISTS admin_audit_log (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                admin_id INT NULL,
+                admin_email VARCHAR(255) NOT NULL,
+                action VARCHAR(100) NOT NULL,
+                detail VARCHAR(1000) NOT NULL DEFAULT '',
+                created_at VARCHAR(64) NOT NULL,
+                INDEX (created_at)
+            );
             """
         )
 
@@ -765,6 +864,26 @@ def _bootstrap_super_admin() -> None:
                 datetime.utcnow().isoformat(),
             ),
         )
+
+
+def _audit(actor: dict, action: str, detail: str = "") -> None:
+    """Appends one row to admin_audit_log — "who changed what, and when",
+    for the mutating admin endpoints below (accounts, prize odds/tiers,
+    campaign lifecycle). Best-effort: a logging failure must never break
+    the actual admin action it's recording, so this swallows its own
+    errors rather than propagating them.
+
+    admin_id has no foreign key on purpose — a deleted admin's past actions
+    should stay in the log, not disappear or block the deletion."""
+    try:
+        with get_master_conn() as conn:
+            conn.execute(
+                "INSERT INTO admin_audit_log (admin_id, admin_email, action, detail, created_at) "
+                "VALUES (%s, %s, %s, %s, %s)",
+                (actor.get("id"), actor.get("email", "unknown"), action, detail[:1000], datetime.utcnow().isoformat()),
+            )
+    except Exception as e:  # noqa: BLE001 - logging must never break the caller
+        print(f"[audit] failed to record {action!r}: {e}")
 
 
 # Default flat amount/weight ladder for a brand-new campaign — used by
@@ -835,13 +954,15 @@ def _row_to_admin_user_out(row: dict) -> AdminUserOut:
     )
 
 @app.post("/api/auth/login", response_model=LoginResponse)
-def login(req: LoginRequest):
+@limiter.limit("10/minute")  # admin-only traffic, small volume — strict on purpose
+def login(request: Request, req: LoginRequest):
     email = req.email.strip().lower()
     with get_master_conn() as conn:
         row = conn.execute("SELECT * FROM admin_users WHERE email = %s", (email,)).fetchone()
     if not row or not row["active"] or not verify_password(req.password, row["password_hash"]):
         raise HTTPException(status_code=401, detail="Invalid email or password.")
     token = create_token(row)
+    _audit(row, "login")
     return LoginResponse(token=token, user=_row_to_admin_user_out(row))
 
 @app.get("/api/auth/me", response_model=AdminUserOut)
@@ -854,8 +975,20 @@ def list_admin_users(_: dict = Depends(require_super_admin)):
         rows = conn.execute("SELECT * FROM admin_users ORDER BY created_at DESC").fetchall()
     return [_row_to_admin_user_out(r) for r in rows]
 
+@app.get("/api/admin/audit-log", response_model=list[AuditLogEntryOut])
+def list_audit_log(limit: int = 200, _: dict = Depends(require_super_admin)):
+    """Who changed what, and when — platform-wide, not scoped to one
+    tombola, so only a super_admin can read it (same as account management
+    above)."""
+    limit = max(1, min(limit, 500))
+    with get_master_conn() as conn:
+        rows = conn.execute(
+            "SELECT * FROM admin_audit_log ORDER BY id DESC LIMIT %s", (limit,)
+        ).fetchall()
+    return [AuditLogEntryOut(**r) for r in rows]
+
 @app.post("/api/admin/users", response_model=AdminUserOut)
-def create_admin_user(payload: AdminUserCreate, _: dict = Depends(require_super_admin)):
+def create_admin_user(payload: AdminUserCreate, actor: dict = Depends(require_super_admin)):
     if payload.role not in ("super_admin", "tombola_admin"):
         raise HTTPException(status_code=422, detail="role must be 'super_admin' or 'tombola_admin'.")
     slug = payload.campaign_slug.strip() if payload.campaign_slug else None
@@ -884,10 +1017,11 @@ def create_admin_user(payload: AdminUserCreate, _: dict = Depends(require_super_
             ),
         )
         row = conn.execute("SELECT * FROM admin_users WHERE id = %s", (cur.lastrowid,)).fetchone()
+    _audit(actor, "create_admin_user", f"created {row['role']} account {row['email']!r}")
     return _row_to_admin_user_out(row)
 
 @app.put("/api/admin/users/{user_id}", response_model=AdminUserOut)
-def update_admin_user(user_id: int, payload: AdminUserUpdate, _: dict = Depends(require_super_admin)):
+def update_admin_user(user_id: int, payload: AdminUserUpdate, actor: dict = Depends(require_super_admin)):
     with get_master_conn() as conn:
         existing = conn.execute("SELECT * FROM admin_users WHERE id = %s", (user_id,)).fetchone()
         if not existing:
@@ -930,6 +1064,7 @@ def update_admin_user(user_id: int, payload: AdminUserUpdate, _: dict = Depends(
                 (*updates.values(), user_id),
             )
         row = conn.execute("SELECT * FROM admin_users WHERE id = %s", (user_id,)).fetchone()
+    _audit(actor, "update_admin_user", f"updated account {row['email']!r} ({', '.join(updates) or 'no changes'})")
     return _row_to_admin_user_out(row)
 
 @app.delete("/api/admin/users/{user_id}")
@@ -937,10 +1072,11 @@ def delete_admin_user(user_id: int, current: dict = Depends(require_super_admin)
     if user_id == current["id"]:
         raise HTTPException(status_code=422, detail="You cannot delete your own account.")
     with get_master_conn() as conn:
-        existing = conn.execute("SELECT 1 FROM admin_users WHERE id = %s", (user_id,)).fetchone()
+        existing = conn.execute("SELECT email FROM admin_users WHERE id = %s", (user_id,)).fetchone()
         if not existing:
             raise HTTPException(status_code=404, detail="Account not found.")
         conn.execute("DELETE FROM admin_users WHERE id = %s", (user_id,))
+    _audit(current, "delete_admin_user", f"deleted account {existing['email']!r}")
     return {"ok": True, "id": user_id}
 
 # --------------------------------------------------------------------------
@@ -1116,7 +1252,11 @@ DICE_WEIGHTS = {
 }
 
 @app.post("/api/dice/roll", response_model=DiceRollResponse)
-async def roll_dice(req: DiceRollRequest):
+# Generous ceiling, not a precise per-player cap — real players behind a
+# store's shared wifi/carrier NAT can legitimately share one public IP, so
+# this exists to stop a runaway script, not to police normal traffic.
+@limiter.limit("60/minute")
+async def roll_dice(request: Request, req: DiceRollRequest):
     """Roll a weighted 6-sided die."""
     values = list(DICE_WEIGHTS.keys())
     weights = list(DICE_WEIGHTS.values())
@@ -1137,7 +1277,8 @@ async def roll_dice(req: DiceRollRequest):
     )
 
 @app.post("/api/play", response_model=PlayResponse)
-def play(req: PlayRequest):
+@limiter.limit("60/minute")  # see roll_dice above for why this ceiling is generous
+def play(request: Request, req: PlayRequest):
     prizes = play_round(req.user_id, req.pick_limit, req.slug)
     return PlayResponse(prizes=prizes, total=sum(prizes))
 
@@ -1163,7 +1304,7 @@ def get_prize_odds(slug: str, _: dict = Depends(require_campaign_access)):
     )
 
 @app.put("/api/admin/prizes", response_model=PrizeOddsConfig)
-def put_prize_odds(slug: str, config: PrizeOddsConfig, _: dict = Depends(require_campaign_access)):
+def put_prize_odds(slug: str, config: PrizeOddsConfig, actor: dict = Depends(require_campaign_access)):
     if not config.prizes:
         raise HTTPException(status_code=422, detail="At least one prize is required.")
     if any(p.probability < 0 for p in config.prizes):
@@ -1185,6 +1326,7 @@ def put_prize_odds(slug: str, config: PrizeOddsConfig, _: dict = Depends(require
                 "VALUES (%s, %s, %s, 0, 0)",
                 (campaign["id"], p.amount, p.probability),
             )
+    _audit(actor, "update_prize_odds", f"replaced prize ladder for {slug!r} ({len(config.prizes)} prizes)")
     return get_prize_odds(slug)
 
 # --------------------------------------------------------------------------
@@ -1260,12 +1402,16 @@ def parse_receipt(text: str) -> dict:
     }
 
 @app.post("/api/receipt/validate", response_model=ReceiptValidationResponse)
+@limiter.limit("30/minute")  # each hit costs a paid OCR.space call — tighter than the others on purpose
 async def validate_receipt(
+    request: Request,
     file: UploadFile = File(...),
     slug: str = Form(...),
     user_id: Optional[str] = Form(None),
 ):
     image_bytes = await file.read()
+    if len(image_bytes) > MAX_RECEIPT_IMAGE_BYTES:
+        raise HTTPException(status_code=413, detail="Receipt image is too large (max 10 MB).")
     image_hash = hashlib.sha256(image_bytes).hexdigest()
 
     with get_campaign_conn(slug) as conn:
@@ -1391,7 +1537,8 @@ async def validate_receipt(
 # --------------------------------------------------------------------------
 
 @app.post("/api/clients/verify", response_model=ClientOut)
-def verify_client(req: ClientVerifyRequest):
+@limiter.limit("30/minute")
+def verify_client(request: Request, req: ClientVerifyRequest):
     if not req.phone_number.strip():
         raise HTTPException(status_code=422, detail="phone_number is required.")
     with get_master_conn() as conn:
@@ -1399,7 +1546,13 @@ def verify_client(req: ClientVerifyRequest):
     return ClientOut(**client)
 
 @app.get("/api/admin/clients/{phone_number}", response_model=ClientOut)
-def get_client(phone_number: str):
+def get_client(phone_number: str, _: dict = Depends(require_super_admin)):
+    # Previously had NO auth at all — anyone could pull a customer's full
+    # name off just their phone number. super_admin-only for now (no
+    # frontend caller exists yet — grep confirms it — so there's no known
+    # tombola_admin use case to accommodate); loosen to
+    # require_campaign_access if/when a real caller needs it scoped to one
+    # tombola instead of platform-wide.
     with get_master_conn() as conn:
         row = conn.execute(
             "SELECT * FROM clients WHERE phone_number = %s", (phone_number,)
@@ -1423,7 +1576,7 @@ def list_prize_tiers(slug: str, _: dict = Depends(require_campaign_access)):
     return [PrizeTierOut(**r) for r in rows]
 
 @app.post("/api/admin/prize-tiers", response_model=PrizeTierOut)
-def create_prize_tier(slug: str, tier: PrizeTierCreate, _: dict = Depends(require_campaign_access)):
+def create_prize_tier(slug: str, tier: PrizeTierCreate, actor: dict = Depends(require_campaign_access)):
     with get_campaign_conn(slug) as conn:
         campaign = _get_or_create_campaign(conn)
         cur = conn.execute(
@@ -1435,10 +1588,11 @@ def create_prize_tier(slug: str, tier: PrizeTierCreate, _: dict = Depends(requir
             ),
         )
         row = conn.execute("SELECT * FROM prize_tiers WHERE id = %s", (cur.lastrowid,)).fetchone()
+    _audit(actor, "create_prize_tier", f"created tier {row['name']!r} on {slug!r}")
     return PrizeTierOut(**row)
 
 @app.put("/api/admin/prize-tiers/{tier_id}", response_model=PrizeTierOut)
-def update_prize_tier(tier_id: int, slug: str, tier: PrizeTierUpdate, _: dict = Depends(require_campaign_access)):
+def update_prize_tier(tier_id: int, slug: str, tier: PrizeTierUpdate, actor: dict = Depends(require_campaign_access)):
     # `slug` is now required (wasn't before) — `tier_id` used to be globally
     # unique in the old shared DB, but each tombola has its own database now,
     # so we have to be told which one to look in before `tier_id` means
@@ -1456,15 +1610,17 @@ def update_prize_tier(tier_id: int, slug: str, tier: PrizeTierUpdate, _: dict = 
                 (*updates.values(), tier_id),
             )
         row = conn.execute("SELECT * FROM prize_tiers WHERE id = %s", (tier_id,)).fetchone()
+    _audit(actor, "update_prize_tier", f"updated tier {row['name']!r} on {slug!r} ({', '.join(updates) or 'no changes'})")
     return PrizeTierOut(**row)
 
 @app.delete("/api/admin/prize-tiers/{tier_id}")
-def delete_prize_tier(tier_id: int, slug: str, _: dict = Depends(require_campaign_access)):
+def delete_prize_tier(tier_id: int, slug: str, actor: dict = Depends(require_campaign_access)):
     with get_campaign_conn(slug) as conn:
         existing = conn.execute("SELECT * FROM prize_tiers WHERE id = %s", (tier_id,)).fetchone()
         if not existing:
             raise HTTPException(status_code=404, detail="Prize tier not found.")
         conn.execute("DELETE FROM prize_tiers WHERE id = %s", (tier_id,))
+    _audit(actor, "delete_prize_tier", f"deleted tier {existing['name']!r} on {slug!r}")
     return {"ok": True, "id": tier_id}
 
 # --------------------------------------------------------------------------
@@ -1473,7 +1629,8 @@ def delete_prize_tier(tier_id: int, slug: str, _: dict = Depends(require_campaig
 # --------------------------------------------------------------------------
 
 @app.post("/api/participate", response_model=ParticipationOut)
-def participate(req: ParticipateRequest):
+@limiter.limit("30/minute")  # hands out an actual tombola entry — see roll_dice above for the reasoning
+def participate(request: Request, req: ParticipateRequest):
     if not req.phone_number.strip():
         raise HTTPException(status_code=422, detail="phone_number is required.")
 
@@ -1603,6 +1760,69 @@ def list_participations(
 
     return {"items": rows, "total": total, "page": page, "page_size": page_size}
 
+@app.post("/api/admin/participations/draw-winner")
+def draw_random_winner(
+    slug: str,
+    body: DrawWinnerRequest,
+    actor: dict = Depends(require_campaign_access),
+):
+    """Picks one participant uniformly at random AND immediately marks them
+    a winner (is_winner=1) — backs the "Tirer au sort" button on the
+    admin's Participants tab, mainly for the 'raffle' game type (see
+    platform/types.ts GameId) whose scan-only flow never runs an instant
+    on-screen draw, so the admin has to draw a winner by hand.
+
+    The pick + the mark happen in one transaction on the same connection —
+    the SELECT (ORDER BY RAND() LIMIT 1, a fair draw over every entrant
+    ever recorded for this campaign, not just whatever page the table has
+    loaded) and the UPDATE that follows always agree on which row won."""
+    with get_campaign_conn(slug) as conn:
+        campaign = _get_or_create_campaign(conn)
+        clients_table = f"`{MYSQL_DATABASE}`.clients"
+
+        where = ["p.campaign_id = %s"]
+        params: list = [campaign["id"]]
+        if body.exclude_winners:
+            where.append("p.is_winner = 0")
+        where_clause = " AND ".join(where)
+
+        row = conn.execute(
+            f"""
+            SELECT p.id, p.client_id, c.phone_number, c.full_name
+            FROM participations p
+            JOIN {clients_table} c ON c.id = p.client_id
+            WHERE {where_clause}
+            ORDER BY RAND()
+            LIMIT 1
+            """,
+            tuple(params),
+        ).fetchone()
+
+        if not row:
+            raise HTTPException(status_code=404, detail="No participants to draw from yet.")
+
+        prize_fr = (body.prize_fr or "").strip() or DEFAULT_RAFFLE_PRIZE_TEXT[0]
+        prize_ar = (body.prize_ar or "").strip() or DEFAULT_RAFFLE_PRIZE_TEXT[1]
+
+        conn.execute(
+            "UPDATE participations SET is_winner = 1, prize_fr = %s, prize_ar = %s WHERE id = %s",
+            (prize_fr, prize_ar, row["id"]),
+        )
+        _audit(actor, "draw_random_winner", f"slug={slug} participation_id={row['id']} prize_fr={prize_fr}")
+
+        updated = conn.execute(
+            f"""
+            SELECT p.id, p.client_id, c.phone_number, c.full_name, p.prize_tier_id,
+                   p.is_winner, p.prize_fr, p.prize_ar, p.bill_image_path, p.participation_date
+            FROM participations p
+            JOIN {clients_table} c ON c.id = p.client_id
+            WHERE p.id = %s
+            """,
+            (row["id"],),
+        ).fetchone()
+
+    return updated
+
 @app.get("/api/admin/receipts")
 def list_receipts(slug: str, page: int = 1, page_size: int = 25, _: dict = Depends(require_campaign_access)):
     """Every validated receipt (= scanned ticket) for this site's campaign,
@@ -1691,16 +1911,25 @@ def admin_stats(slug: str, _: dict = Depends(require_campaign_access)):
 # articles qualify this campaign" picker.
 # --------------------------------------------------------------------------
 
+
+# These 5 endpoints previously had NO auth dependency at all despite living
+# under /api/admin/ — Marjane's whole product catalog (brands, suppliers,
+# prices) was readable by anyone, unauthenticated. Fixed with
+# get_current_user (any logged-in admin, no role check): the catalog isn't
+# scoped to one tombola, so require_campaign_access doesn't apply (no slug
+# here), and require_super_admin would wrongly block a tombola_admin from
+# the product-rules picker they're supposed to use on their own campaign.
+
 @app.get("/api/admin/articles/brands")
-def admin_article_brands():
+def admin_article_brands(_: dict = Depends(get_current_user)):
     return {"brands": catalog.get_brands()}
 
 @app.get("/api/admin/articles/fournisseurs")
-def admin_article_fournisseurs():
+def admin_article_fournisseurs(_: dict = Depends(get_current_user)):
     return {"fournisseurs": catalog.get_fournisseurs()}
 
 @app.get("/api/admin/articles/rayons")
-def admin_article_rayons():
+def admin_article_rayons(_: dict = Depends(get_current_user)):
     return {"rayons": catalog.get_rayons()}
 
 @app.get("/api/admin/articles")
@@ -1712,6 +1941,7 @@ def admin_article_search(
     gencode: Optional[str] = None,
     page: int = 1,
     page_size: int = 25,
+    _: dict = Depends(get_current_user),
 ):
     items, total = catalog.search_articles(
         brand=brand, fournisseur=fournisseur, rayon=rayon, q=q, gencode=gencode, page=page, page_size=page_size
@@ -1722,7 +1952,7 @@ class ArticleCodesLookup(BaseModel):
     codes: list[str]
 
 @app.post("/api/admin/articles/by-codes")
-def admin_articles_by_codes(body: ArticleCodesLookup):
+def admin_articles_by_codes(body: ArticleCodesLookup, _: dict = Depends(get_current_user)):
     # Used by CSV import: hydrate bare article codes into full catalog rows
     # (libelle/marq/price/…) and let the caller diff `codes` against the
     # returned items to report which codes don't exist in the catalog.
@@ -1750,7 +1980,7 @@ def get_product_rules(slug: str, _: dict = Depends(require_campaign_access)):
             return _empty_product_rules()
 
 @app.put("/api/admin/campaign/product-rules", response_model=ProductRules)
-def put_product_rules(slug: str, rules: ProductRules, _: dict = Depends(require_campaign_access)):
+def put_product_rules(slug: str, rules: ProductRules, actor: dict = Depends(require_campaign_access)):
     if rules.mode == "per_article":
         for a in rules.articles:
             if not a.ruleType or a.threshold is None:
@@ -1778,6 +2008,7 @@ def put_product_rules(slug: str, rules: ProductRules, _: dict = Depends(require_
             "UPDATE campaigns SET product_rules = %s WHERE id = %s",
             (json.dumps(rules.model_dump()), campaign["id"]),
         )
+    _audit(actor, "update_product_rules", f"updated product rules for {slug!r} (mode={rules.mode})")
     return rules
 
 @app.get("/api/campaign")
@@ -1793,7 +2024,7 @@ def campaign_public(slug: str):
         }
 
 @app.put("/api/admin/campaign/lifecycle")
-def put_campaign_lifecycle(slug: str, patch: CampaignLifecycle, _: dict = Depends(require_campaign_access)):
+def put_campaign_lifecycle(slug: str, patch: CampaignLifecycle, actor: dict = Depends(require_campaign_access)):
     """Admin-only counterpart to campaign_public's read — the write side of
     'is this tombola open to play'. Called from the admin whenever a
     campaign's kanban status, archive action, maintenance toggle, or
@@ -1809,6 +2040,7 @@ def put_campaign_lifecycle(slug: str, patch: CampaignLifecycle, _: dict = Depend
                 (*updates.values(), campaign["id"]),
             )
         row = conn.execute("SELECT * FROM campaigns WHERE id = %s", (campaign["id"],)).fetchone()
+    _audit(actor, "update_campaign_lifecycle", f"updated lifecycle for {slug!r} ({', '.join(updates) or 'no changes'})")
     return {
         "active": bool(row["active"]),
         "end_date": row["end_date"],
@@ -1850,7 +2082,7 @@ def get_campaign(slug: str):
     return json.loads(row["config"])
 
 @app.post("/api/campaigns", response_model=dict)
-def create_campaign(campaign: CampaignRecord, _: dict = Depends(require_super_admin)):
+def create_campaign(campaign: CampaignRecord, actor: dict = Depends(require_super_admin)):
     now = datetime.utcnow().isoformat()
     with get_master_conn() as conn:
         existing = conn.execute(
@@ -1871,10 +2103,11 @@ def create_campaign(campaign: CampaignRecord, _: dict = Depends(require_super_ad
                 now,
             ),
         )
+    _audit(actor, "create_campaign", f"created campaign {campaign.name!r} ({campaign.slug!r})")
     return {"ok": True, "id": campaign.id}
 
 @app.put("/api/campaigns/{id}")
-def update_campaign(id: str, campaign: CampaignRecord, _: dict = Depends(require_super_admin)):
+def update_campaign(id: str, campaign: CampaignRecord, actor: dict = Depends(require_super_admin)):
     now = datetime.utcnow().isoformat()
     with get_master_conn() as conn:
         row = conn.execute(
@@ -1894,12 +2127,14 @@ def update_campaign(id: str, campaign: CampaignRecord, _: dict = Depends(require
                 id,
             ),
         )
+    _audit(actor, "update_campaign", f"updated campaign {campaign.name!r} ({campaign.slug!r})")
     return {"ok": True, "id": id}
 
 @app.delete("/api/campaigns/{id}")
-def delete_campaign(id: str, _: dict = Depends(require_super_admin)):
+def delete_campaign(id: str, actor: dict = Depends(require_super_admin)):
     with get_master_conn() as conn:
         conn.execute("DELETE FROM campaign_config WHERE id = %s", (id,))
+    _audit(actor, "delete_campaign", f"deleted campaign {id!r}")
     return {"ok": True, "id": id}
 
 if __name__ == "__main__":

@@ -60,6 +60,7 @@ const DICT: Record<string, Entry> = {
   'topbar.undo': { fr: 'Annuler', en: 'Undo', ar: 'تراجع' },
   'topbar.redo': { fr: 'Rétablir', en: 'Redo', ar: 'إعادة' },
   'topbar.toggleSidebar': { fr: 'Basculer le menu latéral', en: 'Toggle sidebar', ar: 'تبديل الشريط الجانبي' },
+  'topbar.brandColor': { fr: 'Couleur de la marque', en: 'Brand color', ar: 'لون العلامة التجارية' },
   'topbar.administrator': { fr: 'Administrateur', en: 'Administrator', ar: 'مسؤول' },
   'topbar.adminEmailFallback': { fr: 'admin', en: 'admin', ar: 'admin' },
 
@@ -119,6 +120,7 @@ const DICT: Record<string, Entry> = {
   'platform.statusPublished': { fr: 'Publié', en: 'Published', ar: 'منشور' },
   'platform.statusDraft': { fr: 'Brouillon', en: 'Draft', ar: 'مسودة' },
   'platform.statusMaintenance': { fr: 'Maintenance', en: 'Maintenance', ar: 'صيانة' },
+  'platform.statusEnded': { fr: 'Terminé', en: 'Ended', ar: 'منتهي' },
 
   // ---- Team (pages/Team.tsx) ----
   'team.title': { fr: 'Équipe', en: 'Team', ar: 'الفريق' },
@@ -305,6 +307,14 @@ const DICT: Record<string, Entry> = {
   'prizes.gameWheelDesc': { fr: 'Un tour détermine le prix.', en: 'One spin decides the prize.', ar: 'دورة واحدة تحدد الجائزة.' },
   'prizes.gameScratch': { fr: 'Carte à gratter', en: 'Scratch Card', ar: 'بطاقة الكشط' },
   'prizes.gameScratchDesc': { fr: 'Grattez une carte 3D pour révéler le prix.', en: 'Scratch a 3D card to reveal the prize.', ar: 'اكشط بطاقة ثلاثية الأبعاد للكشف عن الجائزة.' },
+  'prizes.gameRaffle': { fr: 'Tirage au sort', en: 'Raffle draw', ar: 'سحب عشوائي' },
+  'prizes.gameRaffleDesc': { fr: 'Pas de jeu : le scan inscrit directement au tirage au sort.', en: 'No mini-game: scanning enters the player straight into the draw.', ar: 'بدون لعبة: المسح يسجّل اللاعب مباشرة في السحب العشوائي.' },
+  'prizes.raffleInfoTitle': { fr: 'Comment ça marche', en: 'How it works', ar: 'كيف يعمل' },
+  'prizes.raffleInfoDesc': {
+    fr: "Ce type de campagne n'a pas de mini-jeu ni d'échelle de prix/probabilités. Après le scan du ticket, le joueur voit directement l'écran de confirmation d'inscription au tirage au sort. Le ou les gagnants sont choisis plus tard, hors-ligne, par vos soins — retrouvez tous les participants inscrits dans l'onglet Participants.",
+    en: "This campaign type has no mini-game and no prize/odds ladder. After scanning the receipt, the player goes straight to the raffle-entry confirmation screen. Winners are picked later, offline, by your team — every entrant is listed in the Participants tab.",
+    ar: 'لا يحتوي هذا النوع من الحملات على لعبة مصغرة ولا على سلم جوائز/احتمالات. بعد مسح الإيصال، ينتقل اللاعب مباشرة إلى شاشة تأكيد التسجيل في السحب. يتم اختيار الفائز لاحقًا، دون اتصال، من قبل فريقكم — يمكنكم إيجاد جميع المشاركين في تبويب المشاركين.',
+  },
   'prizes.scratchDesignTitle': { fr: 'Design de la carte à gratter', en: 'Scratch card design', ar: 'تصميم بطاقة الكشط' },
   'prizes.scratchDesignDesc': { fr: 'Image de marque, texture du film et animation de révélation pour la carte 3D — avec aperçu en direct.', en: 'Branding, foil texture and reveal animation for the 3D scratch card — with a live preview.', ar: 'العلامة التجارية وملمس الطبقة العاكسة ورسوم الكشف للبطاقة ثلاثية الأبعاد — مع معاينة مباشرة.' },
   'prizes.wheelDesignTitle': { fr: 'Design de la roue', en: 'Wheel design', ar: 'تصميم العجلة' },
@@ -630,6 +640,19 @@ const DICT: Record<string, Entry> = {
   'participantsTab.noMatch': { fr: 'Aucun participant ne correspond à vos filtres', en: 'No participants match your filters', ar: 'لا يوجد مشارك مطابق لمرشحاتك' },
   'participantsTab.noMatchDesc': { fr: 'Essayez une autre recherche ou combinaison de filtres.', en: 'Try a different search or filter combination.', ar: 'جرّب بحثًا أو مجموعة مرشحات مختلفة.' },
   'participantsTab.showingRecent': { fr: 'Affichage des {shown} plus récents sur {total}', en: 'Showing the {shown} most recent of {total}', ar: 'عرض أحدث {shown} من أصل {total}' },
+  'participantsTab.drawRandom': { fr: 'Tirer au sort', en: 'Draw at random', ar: 'سحب عشوائي' },
+  'participantsTab.drawing': { fr: 'Tirage en cours…', en: 'Drawing…', ar: 'جارٍ السحب...' },
+  'participantsTab.drawTitle': { fr: 'Tirage au sort', en: 'Random draw', ar: 'السحب العشوائي' },
+  'participantsTab.drawDesc': { fr: "Un participant est choisi au hasard parmi tous ceux inscrits à cette tombola.", en: 'One participant is picked at random among everyone entered in this tombola.', ar: 'يتم اختيار مشارك عشوائيًا من بين جميع المسجلين في هذا اليانصيب.' },
+  'participantsTab.drawWinnerLabel': { fr: 'Participant tiré au sort', en: 'Drawn participant', ar: 'المشارك المسحوب' },
+  'participantsTab.drawExcludeWinners': { fr: 'Exclure les gagnants déjà marqués', en: 'Exclude already-marked winners', ar: 'استبعاد الفائزين المحددين مسبقًا' },
+  'participantsTab.drawAgain': { fr: 'Tirer un autre', en: 'Draw again', ar: 'سحب آخر' },
+  'participantsTab.drawEmpty': { fr: 'Aucun participant à tirer au sort pour le moment.', en: 'No participants to draw from yet.', ar: 'لا يوجد مشاركون للسحب منهم بعد.' },
+  'participantsTab.drawError': { fr: 'Échec du tirage au sort.', en: 'Failed to draw a participant.', ar: 'فشل السحب العشوائي.' },
+  'participantsTab.drawSaved': { fr: 'Enregistré comme gagnant', en: 'Saved as winner', ar: 'تم التسجيل كفائز' },
+  'participantsTab.drawPrizeLabel': { fr: 'Lot remporté', en: 'Prize won', ar: 'الجائزة الممنوحة' },
+  'participantsTab.drawPrizeHint': { fr: 'Affiché comme prix dans le tableau des participants.', en: 'Shown as the prize in the participants table.', ar: 'يظهر كجائزة في جدول المشاركين.' },
+  'participantsTab.drawPrizePlaceholder': { fr: 'Ex : iPhone 15 (optionnel)', en: 'E.g. iPhone 15 (optional)', ar: 'مثال: آيفون 15 (اختياري)' },
 
   // ---- Tickets tab (pages/workspace/dashboard/TicketsTab.tsx) ----
   'ticketsTab.loadError': { fr: 'Échec du chargement des tickets.', en: 'Failed to load tickets.', ar: 'فشل تحميل التذاكر.' },

@@ -1,10 +1,10 @@
 import { useParams } from 'react-router-dom'
 import { usePlatformStore } from '../../../lib/store'
-import { useShallow } from 'zustand/react/shallow'
+import { usePlatformStore as useCampaignStore } from '../../../../platform/store'
+import { useCampaignAnalytics } from '../../../lib/useCampaignAnalytics'
 import { Card } from '../../../components/ui/Basics'
 import { StatCard } from '../../../components/ui/StatCard'
 import { Select } from '../../../components/ui/Field'
-import { dailyParticipation, prizeDistribution, cityBreakdown, hourlyActivity } from '../../../lib/mock-data'
 import {
   ResponsiveContainer,
   LineChart,
@@ -30,17 +30,21 @@ const PIE_COLORS = ['#17181C', '#2D6BE7', '#9B9EA7', '#0E9F6E', '#B45309', '#DC2
 export default function AnalyticsTab() {
   const { siteId } = useParams()
   const website = usePlatformStore((s) => s.websites.find((w) => w.id === siteId))
-  const campaigns = usePlatformStore(useShallow((s) => s.campaignsFor(siteId!)))
+  const slug = useCampaignStore((s) => s.campaigns.find((c) => c.id === siteId))?.slug
   const [range, setRange] = useState('14')
+  const liveStats = useCampaignAnalytics(slug, Number(range))
   const { t } = useAdminLang()
 
   if (!website) return null
 
-  const hasTraffic = website.stats.participants > 0
-  const participation = dailyParticipation(website.name.length)
-  const prizes = prizeDistribution(campaigns[0]?.prizes ?? [])
-  const cities = cityBreakdown()
-  const hourly = hourlyActivity()
+  const hasTraffic = liveStats.participants > 0
+  const participation = liveStats.dailyTrend
+  const prizes = liveStats.prizeDistribution
+  // No city field exists anywhere in the schema (clients/receipts/
+  // participations) — nothing to compute here, so this stays empty and the
+  // "no city data yet" state below is literal, not a placeholder.
+  const cities: { city: string; participants: number }[] = []
+  const hourly = liveStats.hourly
 
   return (
     <div>
@@ -53,10 +57,10 @@ export default function AnalyticsTab() {
       </div>
 
       <div className="mt-4 grid grid-cols-2 gap-3.5 lg:grid-cols-4">
-        <StatCard label={t('sidebar.participants')} value={website.stats.participants.toLocaleString('fr-FR')} icon={<Users className="h-4 w-4" />} />
-        <StatCard label={t('analyticsTab.ticketsIssued')} value={website.stats.tickets.toLocaleString('fr-FR')} icon={<TicketCheck className="h-4 w-4" />} />
-        <StatCard label={t('overviewTab.conversionRate')} value={`${website.stats.conversion}`} suffix="%" icon={<TrendingUp className="h-4 w-4" />} />
-        <StatCard label={t('participantsTab.winners')} value={website.stats.winners.toLocaleString('fr-FR')} icon={<Award className="h-4 w-4" />} />
+        <StatCard label={t('sidebar.participants')} value={liveStats.participants.toLocaleString('fr-FR')} icon={<Users className="h-4 w-4" />} />
+        <StatCard label={t('analyticsTab.ticketsIssued')} value={liveStats.tickets.toLocaleString('fr-FR')} icon={<TicketCheck className="h-4 w-4" />} />
+        <StatCard label={t('overviewTab.conversionRate')} value={`${liveStats.conversion}`} suffix="%" icon={<TrendingUp className="h-4 w-4" />} />
+        <StatCard label={t('participantsTab.winners')} value={liveStats.winners.toLocaleString('fr-FR')} icon={<Award className="h-4 w-4" />} />
       </div>
 
       <div className="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-3">

@@ -11,23 +11,31 @@ import { Dropdown, DropdownItem } from '../components/ui/Dropdown'
 import { Plus, MoreHorizontal, Globe, Copy, BarChart3, Trash2, Rocket, Layers, CheckCircle2, Users } from 'lucide-react'
 import type { Website } from '../lib/types'
 import { useAdminLang } from '../lib/adminI18n'
+import { useLiveTotalsForSlugs, type LiveTotals } from '../lib/useLiveTotals'
 
 const STATUS_TONE: Record<Website['status'], 'success' | 'neutral' | 'warning'> = {
   published: 'success',
   draft: 'neutral',
   maintenance: 'warning',
+  ended: 'neutral',
 }
 const STATUS_LABEL_KEY: Record<Website['status'], string> = {
   published: 'platform.statusPublished',
   draft: 'platform.statusDraft',
   maintenance: 'platform.statusMaintenance',
+  ended: 'platform.statusEnded',
 }
 
-function WebsiteCard({ website }: { website: Website }) {
+function WebsiteCard({ website, live }: { website: Website; live: LiveTotals | undefined }) {
   const navigate = useNavigate()
   const duplicateWebsite = usePlatformStore((s) => s.duplicateWebsite)
   const deleteWebsite = usePlatformStore((s) => s.deleteWebsite)
   const { t } = useAdminLang()
+  // `website.stats.*` (Campaign.analytics) is local, never-synced dead data —
+  // real participants/winners live in the backend. Prefer the live fetch
+  // once it lands; fall back to the stale field only while it's loading.
+  const participants = live?.loading === false ? live.participants : website.stats.participants
+  const conversion = live?.loading === false ? live.conversion : website.stats.conversion
 
   return (
     <Card className="group relative flex flex-col overflow-hidden transition-all duration-200 hover:-translate-y-[3px] hover:border-[var(--pf-border-strong)] hover:shadow-[var(--pf-shadow-lg)]">
@@ -69,13 +77,13 @@ function WebsiteCard({ website }: { website: Website }) {
           </div>
           <div>
             <div className="font-mono text-[15px] font-semibold tabular text-[var(--pf-ink)]">
-              {website.stats.participants.toLocaleString('fr-FR')}
+              {participants.toLocaleString('fr-FR')}
             </div>
             <div className="text-[10.5px] text-[var(--pf-ink-faint)]">{t('sidebar.participants')}</div>
           </div>
           <div>
             <div className="font-mono text-[15px] font-semibold tabular text-[var(--pf-ink)]">
-              {website.stats.conversion}%
+              {conversion}%
             </div>
             <div className="text-[10.5px] text-[var(--pf-ink-faint)]">{t('platform.conversion')}</div>
           </div>
@@ -135,6 +143,9 @@ export default function PlatformDashboard() {
   const [filter, setFilter] = useState<'all' | Website['status']>('all')
   const { t } = useAdminLang()
 
+  const slugs = useMemo(() => websites.map((w) => w.slug), [websites])
+  const liveTotals = useLiveTotalsForSlugs(slugs)
+
   const filtered = useMemo(() => {
     return websites.filter((w) => {
       const matchesQuery =
@@ -149,9 +160,12 @@ export default function PlatformDashboard() {
     () => ({
       sites: websites.length,
       published: websites.filter((w) => w.status === 'published').length,
-      participants: websites.reduce((sum, w) => sum + w.stats.participants, 0),
+      participants: websites.reduce((sum, w) => {
+        const live = liveTotals[w.slug]
+        return sum + (live?.loading === false ? live.participants : w.stats.participants)
+      }, 0),
     }),
-    [websites],
+    [websites, liveTotals],
   )
 
   return (
@@ -187,6 +201,7 @@ export default function PlatformDashboard() {
                 { value: 'published', label: t('platform.statusPublished') },
                 { value: 'draft', label: t('platform.statusDraft') },
                 { value: 'maintenance', label: t('platform.statusMaintenance') },
+                { value: 'ended', label: t('platform.statusEnded') },
               ]}
             />
           </div>
@@ -228,7 +243,7 @@ export default function PlatformDashboard() {
         ) : (
           <div className="mt-5 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
             {filtered.map((w) => (
-              <WebsiteCard key={w.id} website={w} />
+              <WebsiteCard key={w.id} website={w} live={liveTotals[w.slug]} />
             ))}
           </div>
         )}

@@ -47,8 +47,8 @@ const ERROR_MESSAGES: Record<ValidationErrorCode, Partial<Record<Lang, string>>>
     ar: "انتهت هذه المسابقة.",
   },
   campaign_maintenance: {
-    fr: "Le jeu est momentanément indisponible. Revenez bientôt !",
-    ar: "اللعبة غير متاحة حاليًا. عودوا قريبًا!",
+    fr: "Cette tombola est momentanément indisponible. Revenez bientôt !",
+    ar: "هذا اليانصيب غير متاح حاليًا. عودوا قريبًا!",
   },
 }
 

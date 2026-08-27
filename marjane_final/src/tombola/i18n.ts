@@ -421,6 +421,27 @@ export const t: Dict = {
     ar: 'د.م',
   },
 
+  // Raffle (game type with no mini-game — scan directly enters the draw)
+  raffleTitle: {
+    fr: 'Participation validée !',
+    ar: 'تم تأكيد المشاركة!',
+  },
+
+  raffleThanks: {
+    fr: "Merci d'avoir participé au jeu",
+    ar: 'شكرًا لمشاركتك في المسابقة',
+  },
+
+  raffleConfirmed: {
+    fr: 'Votre inscription a bien été prise en compte.',
+    ar: 'تم تسجيل مشاركتك بنجاح.',
+  },
+
+  raffleCrossFingers: {
+    fr: 'Croisez les doigts : vous êtes maintenant en course pour tenter de gagner...',
+    ar: 'اعقدوا أصابعكم: أنتم الآن في السباق لتجربة حظكم في الفوز...',
+  },
+
   // Campaign lifecycle gate (see engine/CampaignEngine.tsx's UnavailableScreen)
   // — fallback copy so a campaign works before an admin customizes it via
   // the Languages tab (these keys are seeded into every campaign's own
@@ -436,12 +457,12 @@ export const t: Dict = {
   },
 
   campaignMaintenanceTitle: {
-    fr: 'Jeu en pause',
-    ar: 'اللعبة متوقفة مؤقتًا',
+    fr: 'Tombola en pause',
+    ar: 'اليانصيب متوقف مؤقتًا',
   },
 
   campaignMaintenanceMessage: {
-    fr: 'Le jeu est momentanément indisponible. Revenez bientôt !',
-    ar: 'اللعبة غير متاحة حاليًا. عودوا قريبًا!',
+    fr: 'Cette tombola est momentanément indisponible. Revenez bientôt !',
+    ar: 'هذا اليانصيب غير متاح حاليًا. عودوا قريبًا!',
   },
 }

@@ -5,7 +5,6 @@ import { ScreenTitle, PrimaryButton, GhostButton } from '../ui'
 import { CardIcon, ShareIcon, SparkIcon, CheckIcon, RefreshIcon } from '../icons'
 import Confetti from '../Confetti'
 import EditableText from '../EditableText'
-import { playSound } from '../sound'
 
 /* Amount counts up from 0 to the final value for a celebratory reveal. */
 function CountUp({ to }: { to: number }) {
@@ -25,6 +24,7 @@ function CountUp({ to }: { to: number }) {
 export default function ResultScreen({
   lang,
   amount,
+  raffle = false,
   onHome,
   dict = defaultDict,
   editable = false,
@@ -32,6 +32,10 @@ export default function ResultScreen({
 }: {
   lang: Lang
   amount: number
+  /** True for the 'raffle' game type: no mini-game was played, the scan
+   *  itself was the entry. Shows a neutral "you're in the draw" confirmation
+   *  instead of the normal win/lose outcome, regardless of `amount`. */
+  raffle?: boolean
   onHome: () => void
   dict?: Record<string, { fr: string; ar: string; en?: string }>
   editable?: boolean
@@ -39,14 +43,14 @@ export default function ResultScreen({
 }) {
   const won = amount > 0
 
-  useEffect(() => {
-    if (won) playSound('win')
-  }, [won])
-
 const handleShare = async () => {
   const shareData = {
     title: 'Tombola Marjane',
-    text: `🎉 Je viens de gagner ${amount} ${dict.dhm[lang]} grâce à la Tombola Digitale Marjane !
+    text: raffle
+      ? `🎉 Je viens de m'inscrire au tirage au sort de la Tombola Digitale Marjane !
+
+Et vous, tentez votre chance dès maintenant ! 🍀`
+      : `🎉 Je viens de gagner ${amount} ${dict.dhm[lang]} grâce à la Tombola Digitale Marjane !
 
 Et vous, tentez votre chance dès maintenant ! 🍀`,
     url: 'https://tombola.marjane.ma', // Remplace par ton vrai site
@@ -65,6 +69,111 @@ Et vous, tentez votre chance dès maintenant ! 🍀`,
     console.log(err)
   }
 }
+
+  if (raffle) {
+    return (
+      <div className="relative max-w-lg">
+        <Confetti />
+        <ScreenTitle
+          label={dict.resultStepLabel[lang]}
+          title={
+            <EditableText
+              editable={editable}
+              displayValue={dict.raffleTitle[lang]}
+              onCommit={(v) => onEditText?.('raffleTitle', lang, v)}
+            />
+          }
+        />
+
+        <div className="relative">
+          <motion.div
+            aria-hidden
+            className="pointer-events-none absolute left-1/2 top-1/2 h-64 w-64 -translate-x-1/2 -translate-y-1/2 rounded-full blur-3xl"
+            style={{ background: 'color-mix(in srgb, var(--brand-secondary) 45%, transparent)' }}
+            animate={{ opacity: [0.35, 0.6, 0.35], scale: [1, 1.12, 1] }}
+            transition={{ duration: 2.6, repeat: Infinity, ease: 'easeInOut' }}
+          />
+          <motion.div
+            initial={{ opacity: 0, scale: 0.85, y: 16 }}
+            animate={{ opacity: 1, scale: 1, y: 0 }}
+            transition={{ type: 'spring', stiffness: 260, damping: 18, delay: 0.1 }}
+            className="relative overflow-hidden rounded-[2rem] border p-8 text-center backdrop-blur-xl"
+            style={{
+              borderColor: 'color-mix(in srgb, var(--brand-primary) 35%, var(--hairline))',
+              background: 'linear-gradient(160deg, color-mix(in srgb, var(--brand-primary) 14%, var(--card)), color-mix(in srgb, var(--card) 82%, transparent))',
+              boxShadow: '0 28px 60px -28px color-mix(in srgb, var(--brand-primary) 45%, transparent)',
+            }}
+          >
+            <div className="relative mx-auto mb-4 grid h-16 w-16 place-items-center">
+              <motion.span
+                className="absolute inset-0 rounded-full"
+                style={{ background: 'var(--brand-secondary)', opacity: 0.4 }}
+                animate={{ scale: [1, 1.7, 1], opacity: [0.4, 0, 0.4] }}
+                transition={{ duration: 1.8, repeat: Infinity, ease: 'easeOut' }}
+              />
+              <motion.span
+                initial={{ rotate: -20, scale: 0 }}
+                animate={{ rotate: 0, scale: 1 }}
+                transition={{ type: 'spring', stiffness: 300, damping: 14, delay: 0.25 }}
+                className="relative grid h-16 w-16 place-items-center rounded-2xl text-white shadow-lg"
+                style={{
+                  background: 'linear-gradient(155deg, color-mix(in srgb, var(--brand-primary) 85%, white 15%), var(--brand-primary))',
+                }}
+              >
+                <CheckIcon className="h-8 w-8" />
+              </motion.span>
+            </div>
+
+            <EditableText
+              as="p"
+              className="text-[15px] font-semibold"
+              style={{ color: 'var(--ink)' }}
+              editable={editable}
+              displayValue={dict.raffleThanks[lang]}
+              onCommit={(v) => onEditText?.('raffleThanks', lang, v)}
+            />
+            <EditableText
+              as="p"
+              className="mx-auto mt-2 max-w-sm text-[13.5px] leading-relaxed"
+              style={{ color: 'var(--ink-muted)' }}
+              editable={editable}
+              displayValue={dict.raffleConfirmed[lang]}
+              onCommit={(v) => onEditText?.('raffleConfirmed', lang, v)}
+            />
+
+            <div
+              className="mx-auto mt-6 flex max-w-sm items-center gap-3 rounded-2xl border px-4 py-3 text-left backdrop-blur-md"
+              style={{ borderColor: 'color-mix(in srgb, var(--hairline) 160%, transparent)', background: 'color-mix(in srgb, var(--card) 65%, transparent)' }}
+            >
+              <span style={{ color: 'var(--brand-primary)' }}>
+                <SparkIcon className="h-5 w-5" />
+              </span>
+              <EditableText
+                as="span"
+                className="text-[13px]"
+                style={{ color: 'var(--ink-muted)' }}
+                editable={editable}
+                displayValue={dict.raffleCrossFingers[lang]}
+                onCommit={(v) => onEditText?.('raffleCrossFingers', lang, v)}
+              />
+            </div>
+          </motion.div>
+        </div>
+
+        <div className="mt-6 flex flex-col gap-3 sm:flex-row">
+          <PrimaryButton onClick={handleShare}>
+            <ShareIcon className="h-4 w-4" />
+            {dict.share[lang]}
+          </PrimaryButton>
+
+          <GhostButton onClick={onHome}>
+            {dict.backHome[lang]}
+          </GhostButton>
+        </div>
+      </div>
+    )
+  }
+
   if (won) {
     return (
       <div className="relative max-w-lg">

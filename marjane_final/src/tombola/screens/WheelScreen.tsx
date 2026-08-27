@@ -9,7 +9,6 @@ import ParticleField from './components/particle-field.tsx'
 import ResultCard from './components/result-card.tsx'
 import GameButton from './components/game-button.tsx'
 import EditableText from '../EditableText'
-import { playSound } from '../sound'
 import type { WheelTheme } from './components/wheelTheme'
 import './dice-theme.css'
 
@@ -71,7 +70,6 @@ export default function WheelScreen({
   const spin = () => {
     if (phase !== 'idle') return
     setPhase('spinning')
-    playSound('diceRoll')
 
     // Weighted by the admin-set odds, not a uniform pick — a 1%-odds
     // segment lands about 1 spin in 100, matching how thin its wedge looks.
@@ -88,7 +86,6 @@ export default function WheelScreen({
       const won = prizes[chosenIndex]
       setAmount(won)
       setPhase('result')
-      if (won > 0) playSound('win')
       // Let the player see the result for a beat, then move on to the win
       // page automatically — no manual "Continue" tap needed, matching
       // Dice/Cards/Cups.

@@ -84,7 +84,11 @@ export interface CampaignPage {
   order: number
 }
 
-export type GameId = 'cards' | 'scratch' | 'wheel' | 'cups' | 'chest'
+// 'raffle' has no mini-game at all: the player scans their ticket and is
+// simply entered into a draw (tirage au sort) — the winner is picked later
+// by the admin instead of by an instant on-screen mechanic. See FLOWS.raffle
+// in engine/CampaignEngine.tsx.
+export type GameId = 'cards' | 'scratch' | 'wheel' | 'cups' | 'chest' | 'raffle'
 
 export interface GameConfig {
   id: GameId

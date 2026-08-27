@@ -11,6 +11,7 @@ import type { Campaign } from '../../lib/types'
 import { cn } from '../../lib/cn'
 import { Dropdown, DropdownItem } from '../../components/ui/Dropdown'
 import { useAdminLang } from '../../lib/adminI18n'
+import { useLiveTotals } from '../../lib/useLiveTotals'
 
 const COLUMNS: { id: Campaign['status']; labelKey: string }[] = [
   { id: 'draft', labelKey: 'campaigns.statusDraft' },
@@ -30,11 +31,13 @@ function fmt(d: string) {
 
 function CampaignCard({
   campaign,
+  liveParticipants,
   dragging,
   onDragStart,
   onDragEnd,
 }: {
   campaign: Campaign
+  liveParticipants: number
   dragging: boolean
   onDragStart: (e: DragEvent) => void
   onDragEnd: () => void
@@ -103,7 +106,7 @@ function CampaignCard({
 
       <div className="mt-4 flex items-center justify-between border-t border-[var(--pf-border)] pt-3">
         <div className="font-mono text-[12px] text-[var(--pf-ink-muted)] tabular">
-          {campaign.participants.toLocaleString('fr-FR')} {t('sidebar.participants').toLowerCase()}
+          {liveParticipants.toLocaleString('fr-FR')} {t('sidebar.participants').toLowerCase()}
         </div>
         <Badge tone={statusTone} dot>
           {t(STATUS_LABEL_KEY[campaign.status])}
@@ -115,7 +118,9 @@ function CampaignCard({
 
 export default function Campaigns() {
   const { siteId } = useParams()
-const campaigns = usePlatformStore(useShallow((s) => s.campaignsFor(siteId!)))
+  const campaigns = usePlatformStore(useShallow((s) => s.campaignsFor(siteId!)))
+  const website = usePlatformStore((s) => s.websites.find((w) => w.id === siteId))
+  const liveTotals = useLiveTotals(website?.slug)
   const createCampaign = usePlatformStore((s) => s.createCampaign)
   const updateStatus = usePlatformStore((s) => s.updateCampaignStatus)
   const [dialogOpen, setDialogOpen] = useState(false)
@@ -196,6 +201,7 @@ const campaigns = usePlatformStore(useShallow((s) => s.campaignsFor(siteId!)))
                   <CampaignCard
                     key={c.id}
                     campaign={c}
+                    liveParticipants={liveTotals.loading ? c.participants : liveTotals.participants}
                     dragging={draggedId === c.id}
                     onDragStart={(e) => {
                       e.dataTransfer.setData('text/plain', c.id)

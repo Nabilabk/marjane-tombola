@@ -56,10 +56,24 @@ function ensureCampaigns() {
   }
 }
 
+/** A campaign is permanently over — status says so, or its scheduled end
+ * has passed — independent of the admin-toggled maintenance flag. Mirrors
+ * CampaignEngine.tsx's `isEnded` (and backend/app.py's `_lifecycle_block`)
+ * so the dashboard card agrees with what visitors actually see. */
+function isCampaignEnded(c: PlatformCampaign): boolean {
+  if (c.status === 'ended' || c.status === 'archived') return true
+  if (!c.schedule.endDate) return false
+  const endMs = new Date(`${c.schedule.endDate}T${c.schedule.endTime || '23:59'}:00`).getTime()
+  return Date.now() > endMs
+}
+
 /** Convert a platform Campaign → admin Website view. */
 function campaignToWebsite(c: PlatformCampaign): Website {
-  const status: Website['status'] =
-    c.status === 'live' || c.status === 'published'
+  // Ended takes priority over maintenance — a finished tombola shouldn't
+  // read as "Maintenance" just because it isn't 'live'/'published' either.
+  const status: Website['status'] = isCampaignEnded(c)
+    ? 'ended'
+    : c.status === 'live' || c.status === 'published'
       ? 'published'
       : c.status === 'draft' || c.status === 'ready'
         ? 'draft'

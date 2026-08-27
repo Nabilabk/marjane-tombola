@@ -1,10 +1,12 @@
 # Deploying to Azure — step by step
 
 The repo is ready to deploy: `.github/workflows/` has the two pipelines
-(frontend + backend), and `marjane_final/staticwebapp.config.json` handles
-client-side routing. What's left is creating the actual Azure resources and
-connecting them — that part needs your Azure/GitHub accounts, so it can't be
-scripted from here.
+(frontend + backend), and `marjane_final/public/staticwebapp.config.json`
+handles client-side routing — it lives in `public/` specifically so Vite
+copies it into `dist/` on every build (a file at the project root, outside
+`public/`, is never included in the build output). What's left is creating
+the actual Azure resources and connecting them — that part needs your
+Azure/GitHub accounts, so it can't be scripted from here.
 
 ## 0. Push this repo to GitHub
 
@@ -48,7 +50,19 @@ git push -u origin main
    from `backend/.env`, pointing `MYSQL_HOST` etc. at the server from step 1:
    `MYSQL_HOST`, `MYSQL_PORT`, `MYSQL_DATABASE`, `MYSQL_USER`,
    `MYSQL_PASSWORD`, `OCR_API_KEY`, `ADMIN_JWT_SECRET`, `SUPER_ADMIN_EMAIL`,
-   `SUPER_ADMIN_PASSWORD`
+   `SUPER_ADMIN_PASSWORD`, `CORS_ALLOWED_ORIGINS`, plus one new one:
+   `APP_ENV` = `production`
+   - `CORS_ALLOWED_ORIGINS` **must** be set to your real frontend origin(s)
+     (e.g. `https://<random-name>.azurestaticapps.net`, comma-separated if
+     there's more than one) once you have it from step 3 below. Without it
+     the backend only accepts requests from `localhost`, so the deployed
+     frontend can't reach the API until this is set.
+   - `APP_ENV=production` makes the backend **refuse to boot** if
+     `ADMIN_JWT_SECRET` or `SUPER_ADMIN_PASSWORD` are still their insecure
+     fallback values (`dev-only-insecure-secret-change-me` / `admin123`) —
+     set real values for both before setting this, or the App Service will
+     just crash-loop. This is deliberate: those two fallbacks are readable
+     by anyone on GitHub, so this app must never run with them for real.
 6. Go to **Deployment Center → Manage publish profile → Download**. Open
    that file, copy its entire contents.
 7. On GitHub: repo **Settings → Secrets and variables → Actions**:
@@ -84,6 +98,10 @@ if you can — a different network is the real test). Log in, click around.
 If something's broken, check:
 
 - **Backend logs**: App Service resource → "Log stream"
+- **Is the backend even up?**: hit `https://<app-name>.azurewebsites.net/health`
+  directly — it answers `{"status": "ok"}` without touching the DB, so it's
+  the fastest way to tell "process is dead" apart from "DB is unreachable"
+  (also worth pointing an Azure Application Insights / uptime check at it)
 - **CORS/network errors**: browser dev tools → Network tab, on the deployed
   site — a failed request there means `VITE_API_BASE` or the backend's CORS
   isn't set right
@@ -93,8 +111,21 @@ If something's broken, check:
 
 ## Notes
 
-- `backend/app.py` currently allows CORS from `allow_origins=["*"]` — fine
-  for testing, worth tightening to your actual frontend URL before this is
-  a real production deployment.
+- CORS is locked to `CORS_ALLOWED_ORIGINS` (defaults to the local Vite dev
+  server only) — set it to your real frontend URL(s) in App Service's
+  Application settings (see step 2.5) before sending anyone the deployed
+  link, or every request from the deployed frontend will be rejected.
+- The public, unauthenticated endpoints (`/api/participate`,
+  `/api/receipt/validate`, `/api/dice/roll`, `/api/play`,
+  `/api/clients/verify`) and `/api/auth/login` are rate-limited per IP
+  (`slowapi`, in-memory) to blunt scripted abuse — see the comments above
+  `limiter = Limiter(...)` in `app.py` for the numbers and reasoning. It's
+  per-process, so if this ever moves to more than one App Service instance,
+  swap the in-memory store for a shared one (e.g. Redis).
+- Every admin mutation (account create/edit/delete, prize odds/tiers,
+  product rules, campaign lifecycle, campaign create/edit/delete, plus
+  login) is recorded to `admin_audit_log` in the master DB — who, what, and
+  when. Read it via `GET /api/admin/audit-log` (super_admin only); there's
+  no admin UI page for it yet, just the API.
 - The App Service **F1 free tier sleeps** after ~20 minutes idle — the first
   request after that takes a few extra seconds to wake up. Normal, not a bug.

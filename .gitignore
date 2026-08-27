@@ -28,3 +28,7 @@ last_scan_debug.txt
 # backend actually reads at runtime is backend/bd_article.xlsx, which is
 # NOT ignored (catalog.py loads it on boot; deployment needs it committed).
 /bd_article (1).xlsx
+
+# Local screenshots and presentation decks — not part of the app, keep out of the repo
+/Capture d'écran*.png
+/Marjane-Campaign-Studio-Presentation.*

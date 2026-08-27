@@ -50,3 +50,32 @@ export async function fetchParticipations(
   }
   return res.json()
 }
+
+/**
+ * Draws one participant uniformly at random AND immediately marks them a
+ * winner in the database (is_winner=1 + the given prize label) — backs the
+ * "Tirer au sort" button on the Participants tab. The pick + the mark
+ * happen in one backend transaction (SQL `ORDER BY RAND()` over every
+ * entrant ever recorded for this campaign, not just whatever the table has
+ * loaded). Mainly useful for the 'raffle' game type, whose scan-only flow
+ * never runs an instant on-screen draw.
+ */
+export async function drawRandomWinner(
+  slug: string,
+  params: { excludeWinners?: boolean; prizeFr?: string; prizeAr?: string } = {},
+): Promise<Participation> {
+  const res = await authFetch(`${API_BASE}/api/admin/participations/draw-winner?slug=${encodeURIComponent(slug)}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      exclude_winners: params.excludeWinners ?? false,
+      prize_fr: params.prizeFr || null,
+      prize_ar: params.prizeAr || null,
+    }),
+  })
+  if (!res.ok) {
+    const body = await res.json().catch(() => null)
+    throw new Error(body?.detail || `Failed to draw a winner (${res.status})`)
+  }
+  return res.json()
+}

@@ -57,19 +57,19 @@ export function emptyProductRules(): ProductRules {
 }
 
 export async function fetchBrands(): Promise<string[]> {
-  const res = await fetch(`${API_BASE}/api/admin/articles/brands`)
+  const res = await authFetch(`${API_BASE}/api/admin/articles/brands`)
   if (!res.ok) throw new Error(`Failed to load brands (${res.status})`)
   return (await res.json()).brands
 }
 
 export async function fetchFournisseurs(): Promise<string[]> {
-  const res = await fetch(`${API_BASE}/api/admin/articles/fournisseurs`)
+  const res = await authFetch(`${API_BASE}/api/admin/articles/fournisseurs`)
   if (!res.ok) throw new Error(`Failed to load fournisseurs (${res.status})`)
   return (await res.json()).fournisseurs
 }
 
 export async function fetchRayons(): Promise<string[]> {
-  const res = await fetch(`${API_BASE}/api/admin/articles/rayons`)
+  const res = await authFetch(`${API_BASE}/api/admin/articles/rayons`)
   if (!res.ok) throw new Error(`Failed to load rayons (${res.status})`)
   return (await res.json()).rayons
 }
@@ -93,7 +93,7 @@ export async function searchArticles(params: {
   qs.set('page', String(params.page ?? 1))
   qs.set('page_size', String(params.page_size ?? 25))
 
-  const res = await fetch(`${API_BASE}/api/admin/articles?${qs.toString()}`)
+  const res = await authFetch(`${API_BASE}/api/admin/articles?${qs.toString()}`)
   if (!res.ok) throw new Error(`Failed to search articles (${res.status})`)
   return res.json()
 }
@@ -129,7 +129,7 @@ export async function fetchAllMatchingArticles(params: {
  */
 export async function lookupArticlesByCodes(codes: string[]): Promise<CatalogArticle[]> {
   if (codes.length === 0) return []
-  const res = await fetch(`${API_BASE}/api/admin/articles/by-codes`, {
+  const res = await authFetch(`${API_BASE}/api/admin/articles/by-codes`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ codes }),

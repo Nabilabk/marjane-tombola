@@ -130,6 +130,13 @@ export function Topbar({
           {t('sidebar.workspace')}
         </Link>
         <span className="text-[var(--pf-border-strong)]">/</span>
+        {website && (
+          <span
+            className="h-2 w-2 shrink-0 rounded-full ring-1 ring-inset ring-black/10"
+            style={{ background: website.theme.primary }}
+            title={t('topbar.brandColor')}
+          />
+        )}
         <span className="truncate text-[12.5px] font-semibold text-[var(--pf-ink)]">{website?.name}</span>
       </div>
 

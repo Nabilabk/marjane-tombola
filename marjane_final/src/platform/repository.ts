@@ -23,7 +23,12 @@ export interface CampaignRepository {
   delete(id: string): void
 }
 
-const STORAGE_KEY = 'campaignhub.campaigns.v1'
+// Exported so `store.ts` can recognize this key on the browser's `storage`
+// event (fired in every OTHER tab/window on the same origin whenever one tab
+// writes to localStorage) and refresh its in-memory state to match — without
+// this, an edit made in an admin tab never reaches an already-open public
+// `/marjane` tab until that tab is manually reloaded.
+export const STORAGE_KEY = 'campaignhub.campaigns.v1'
 
 /**
  * LocalStorage-backed repository. This is the "today" implementation.

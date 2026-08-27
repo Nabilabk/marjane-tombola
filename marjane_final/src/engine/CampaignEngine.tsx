@@ -51,6 +51,10 @@ export const FLOWS: Record<GameId, Screen[]> = {
   wheel: ['form', 'scan', 'wheel', 'result'],
   scratch: ['form', 'scan', 'scratch', 'result'],
   chest: ['form', 'scan', 'dice', 'cards', 'result'],
+  // No mini-game screen at all: scanning the receipt goes straight to
+  // 'result', which renders the raffle-entry confirmation instead of an
+  // instant win/lose outcome — see the `isRaffle` handling below.
+  raffle: ['form', 'scan', 'result'],
 }
 
 /** `'cups'` is legacy — any campaign still carrying it plays the Scratch
@@ -177,6 +181,10 @@ export default function CampaignEngine({
   const anim = ANIMATION_PRESETS[campaign.theme.animationLevel] ?? ANIMATION_PRESETS.subtle
   const slide = slideVariants(anim.distance)
   const flow = FLOWS[normalizeGameId(campaign.game.id)] ?? FLOWS.cards
+  // 'raffle' skips every game screen — scanning goes straight to 'result',
+  // which then needs to show a neutral "you're entered in the draw" state
+  // instead of the normal win/lose outcome.
+  const isRaffle = normalizeGameId(campaign.game.id) === 'raffle'
   const nextScreen = (s: Screen): Screen => {
     const i = flow.indexOf(s)
     return flow[i + 1] ?? 'result'
@@ -237,7 +245,13 @@ export default function CampaignEngine({
         fullName: fullName || undefined,
         billHash,
         amount,
-      }).catch(() => {})
+      }).catch((err) => {
+        // Never block the result screen the player already saw — but a
+        // silently-swallowed failure here is exactly why a real scan can
+        // "not show up" in the admin dashboard with no clue why (backend
+        // down, duplicate bill_hash, campaign paused, ...). Surface it.
+        console.error('[tombola] failed to record participation:', err)
+      })
     }
     go(nextScreen(fromScreen))
   }
@@ -260,7 +274,9 @@ export default function CampaignEngine({
               if (!isPreview) {
                 // Best-effort — /api/participate finds-or-creates by phone
                 // too, so a failed verify here doesn't strand the player.
-                void verifyClient(data.phone, full).catch(() => {})
+                void verifyClient(data.phone, full).catch((err) => {
+                  console.error('[tombola] failed to verify client:', err)
+                })
               }
               go(nextScreen('form'))
             }}
@@ -276,7 +292,15 @@ export default function CampaignEngine({
             onEditText={onEditText}
             onValidate={(hash) => {
               setBillHash(hash)
-              go(nextScreen('scan'))
+              if (isRaffle) {
+                // No game screen follows — the scan itself is the entry.
+                // Route through finishRound (amount 0) so the participation
+                // still gets logged for the admin, same as every other
+                // mechanic's draw.
+                finishRound('scan', 0)
+              } else {
+                go(nextScreen('scan'))
+              }
             }}
           />
         )
@@ -340,6 +364,7 @@ export default function CampaignEngine({
             editable={editable}
             onEditText={onEditText}
             amount={wonAmount}
+            raffle={isRaffle}
             onHome={home}
           />
         )

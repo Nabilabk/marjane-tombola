@@ -22,6 +22,7 @@ const GAME_TYPES: { id: GameId; labelKey: string; descKey: string }[] = [
   { id: 'cards', labelKey: 'prizes.gameCards', descKey: 'prizes.gameCardsDesc' },
   { id: 'wheel', labelKey: 'prizes.gameWheel', descKey: 'prizes.gameWheelDesc' },
   { id: 'scratch', labelKey: 'prizes.gameScratch', descKey: 'prizes.gameScratchDesc' },
+  { id: 'raffle', labelKey: 'prizes.gameRaffle', descKey: 'prizes.gameRaffleDesc' },
 ]
 
 export default function PrizesTab() {
@@ -47,7 +48,12 @@ export default function PrizesTab() {
   // hasn't been synced yet (different length), keep the local values —
   // the next "Save odds" push will reconcile them.
   useEffect(() => {
-    if (!campaign || !fullCampaign) return
+    // 'raffle' has no prize ladder to sync — the draw happens offline,
+    // decided by the admin later, not by prize_tiers odds.
+    if (!campaign || !fullCampaign || campaign.gameId === 'raffle') {
+      setSyncing(false)
+      return
+    }
     let cancelled = false
     getPrizeOdds(fullCampaign.slug)
       .then((odds) => {
@@ -195,6 +201,16 @@ export default function PrizesTab() {
         </Card>
       )}
 
+      {gameId === 'raffle' && (
+        <Card className="mt-4 p-5">
+          <div className="mb-1 text-[13px] font-medium text-[var(--pf-ink)]">{t('prizes.raffleInfoTitle')}</div>
+          <p className="text-[12.5px] leading-relaxed text-[var(--pf-ink-muted)]">
+            {t('prizes.raffleInfoDesc')}
+          </p>
+        </Card>
+      )}
+
+      {gameId !== 'raffle' && (
       <Card className="mt-4 p-5">
         <div className="mb-1 flex items-center justify-between gap-2">
           <div className="text-[13px] font-medium text-[var(--pf-ink)]">{t(prizeListLabelKey)}</div>
@@ -285,6 +301,7 @@ export default function PrizesTab() {
           {saveError && <span className="text-[12px] text-[var(--pf-danger)]">{saveError}</span>}
         </div>
       </Card>
+      )}
 
       <Card className="mt-4 p-5">
         <div className="mb-1 text-[13px] font-medium text-[var(--pf-ink)]">{t('builder.eligibilityThreshold')}</div>

@@ -6,7 +6,6 @@ import Card from './components/Cards.tsx'
 import GameButton from './components/game-button.tsx'
 import ParticleField from './components/particle-field.tsx'
 import EditableText from '../EditableText'
-import { playSound } from '../sound'
 import type { CardsTheme } from './components/cardsTheme'
 import './dice-theme.css'
 
@@ -94,7 +93,6 @@ export default function CardsScreen({
     const next = [...chosen, ...Array(CARD_COUNT - chosen.length).fill(0)]
     const shuffled = shuffleArray(next)
     setCards(shuffled)
-    playSound('cardShuffle')
 
     // Multi-round shuffle with framer-motion layout animations
     let currentOrder = order.slice()
@@ -126,7 +124,6 @@ export default function CardsScreen({
 
   const pickCard = (index: number) => {
     if (phase !== 'picking' || revealed[index] || pickedCount >= PICK_LIMIT) return
-    playSound('cardFlip')
     const nextRevealed = [...revealed]
     nextRevealed[index] = true
     setRevealed(nextRevealed)
