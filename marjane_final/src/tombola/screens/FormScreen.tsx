@@ -33,18 +33,49 @@ function validMoroccan(raw: string): boolean {
 // Numbers that have "already participated" — demonstrates the duplicate state.
 const USED = new Set(['0612345678', '+212612345678'])
 
+/**
+ * Uploaded PDFs are stored as `data:` URLs (see admin/lib/store.ts addAsset).
+ * Browsers refuse to navigate a new tab straight to a `data:` URL from a
+ * link click (silently blocked — nothing happens, no error shown to the
+ * user), so a `<a target="_blank" href="data:...">` never opens. Object
+ * URLs (`blob:`) aren't subject to that restriction, so for data: URLs we
+ * convert on click and open the blob instead; anything else (e.g. the
+ * default '/reglement-tombola-digitale.pdf') just navigates normally.
+ */
+function openRules(url: string, ev: React.MouseEvent) {
+  if (!url.startsWith('data:')) return
+  ev.preventDefault()
+  fetch(url)
+    .then((res) => res.blob())
+    .then((blob) => {
+      const blobUrl = URL.createObjectURL(blob)
+      window.open(blobUrl, '_blank', 'noopener,noreferrer')
+      // Give the new tab time to load the blob before releasing it.
+      setTimeout(() => URL.revokeObjectURL(blobUrl), 60_000)
+    })
+    .catch(() => {
+      // Fall back to same-tab navigation if the conversion fails for any reason.
+      window.location.href = url
+    })
+}
+
 export default function FormScreen({
   lang,
   onSubmit,
   dict = defaultDict,
   editable = false,
   onEditText,
+  rulesUrl,
 }: {
   lang: Lang
   onSubmit: (data: { firstName: string; lastName: string; phone: string }) => void
   dict?: Record<string, { fr: string; ar: string; en?: string }>
   editable?: boolean
   onEditText?: (key: string, lang: Lang, value: string) => void
+  /** The tombola rules PDF, from the admin's Assets library (Documents
+   * folder). Undefined/empty when no rules doc has been uploaded — the
+   * consent text then renders as plain text instead of a dead link. */
+  rulesUrl?: string
 }) {
   const [firstName, setFirst] = useState('')
   const [lastName, setLast] = useState('')
@@ -151,15 +182,22 @@ export default function FormScreen({
           />
           <span>
             {dict.consentPrefix[lang]}
-            <a
-              href="/reglement-tombola-digitale.pdf"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="font-semibold underline hover:opacity-80"
-              style={{ color: 'var(--brand-primary)' }}
-            >
-              {dict.consentLink[lang]}
-            </a>
+            {rulesUrl ? (
+              <a
+                href={rulesUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                onClick={(ev) => openRules(rulesUrl, ev)}
+                className="font-semibold underline hover:opacity-80"
+                style={{ color: 'var(--brand-primary)' }}
+              >
+                {dict.consentLink[lang]}
+              </a>
+            ) : (
+              <span className="font-semibold" style={{ color: 'var(--brand-primary)' }}>
+                {dict.consentLink[lang]}
+              </span>
+            )}
             {dict.consentSuffix[lang]}
           </span>
         </label>

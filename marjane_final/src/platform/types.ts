@@ -23,7 +23,7 @@ export type Lang = 'fr' | 'ar' | 'en'
 
 export type TemplateId = 'modern' | 'luxury' | 'corporate' | 'minimal'
 
-export type FontFamily = 'display' | 'classic' | 'rounded'
+export type FontFamily = 'display' | 'classic' | 'rounded' | 'modern' | 'elegant' | 'playful'
 export type ButtonStyle = 'solid' | 'outline' | 'soft'
 export type ButtonSize = 'sm' | 'md' | 'lg'
 export type AnimationLevel = 'none' | 'subtle' | 'lively'
@@ -48,6 +48,17 @@ export interface CampaignTheme {
   faviconUrl: string
   heroImageUrl: string
   brandImages: string[]
+  /** Whether the campaign header prints the brand name as text next to the
+   * logo badge — off when the logo image already contains the wordmark, so
+   * it isn't shown twice. Controlled from the Theme editor's Typography
+   * tab. Optional — absent (and treated as `true`) on campaigns saved
+   * before this setting existed. */
+  showBrandName?: boolean
+  /** The tombola rules document (PDF) visitors can consult from the consent
+   * checkbox on the entry form — see FormScreen.tsx. Managed like any other
+   * theme asset: set from the admin's Assets library (Documents folder is a
+   * single-slot "règlement"), empty when none has been uploaded yet. */
+  rulesUrl: string
 }
 
 export interface CampaignBrand {

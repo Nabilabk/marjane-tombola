@@ -13,7 +13,13 @@
 
 import { create } from 'zustand'
 import { usePlatformStore as useCampaignStore } from '../../platform/store'
-import type { Campaign as PlatformCampaign, GameId } from '../../platform/types'
+import { isPastEndDate } from '../../platform/schedule'
+import type {
+  Campaign as PlatformCampaign,
+  GameId,
+  Notification as PlatformNotification,
+  Asset as PlatformAsset,
+} from '../../platform/types'
 import { buildMarjaneCampaign } from '../../platform/seed'
 import { resolveProbabilities } from '../../platform/probabilities'
 import type {
@@ -36,6 +42,80 @@ function iso(daysAgo: number, hour = 10) {
   const d = new Date(Date.now() - daysAgo * 86400000)
   d.setHours(hour, 12, 0, 0)
   return d.toISOString()
+}
+
+// --------------------------------------------------------------------------
+// Theme-derived assets — the Assets library's Logos/Icons/Heroes/Backgrounds
+// folders must show what the site is ACTUALLY using, not a static
+// placeholder unrelated to the real campaign. logoUrl/faviconUrl/
+// heroImageUrl/backgroundImageUrl/brandImages can be set from MANY places
+// (Theme Editor, Settings, Cards/Wheel/Scratch editors, or pre-filled by the
+// "new website" creation wizard from a brand preset) — rather than trying to
+// intercept every one of those write paths, these entries are computed live
+// from the current theme every time `assetsFor` is read, so they're always
+// in sync no matter how the theme field was set. Each has a fixed,
+// well-known id ('theme-logo', 'theme-favicon', 'theme-hero',
+// 'theme-background', 'theme-brand-N') so `deleteAsset` can recognize one
+// and clear the actual theme field (see `clearThemeAssetField`) instead of
+// trying to delete a stored row that doesn't exist.
+const THEME_ASSET_PREFIX = 'theme-'
+
+// "Documents" is the single-slot folder that IS the tombola règlement PDF
+// (see addAsset/deleteAsset below) — one helper so every call site agrees
+// on the folder name instead of repeating the raw string.
+const RULES_FOLDER = 'Documents'
+function isRulesFolder(folder: string | null | undefined): boolean {
+  return folder === RULES_FOLDER
+}
+
+/** Rough KB estimate from a data: URL's base64 payload (~4/3 the byte size);
+ * a plain http(s) URL (e.g. a placeholder) gets a small fixed size instead. */
+function dataUrlSizeKb(url: string): number {
+  const comma = url.indexOf(',')
+  if (url.startsWith('data:') && comma !== -1) {
+    return Math.max(1, Math.round(((url.length - comma - 1) * 0.75) / 1024))
+  }
+  return 12
+}
+
+/** Computed fresh from `theme` on every read — see the block comment above.
+ * `updatedAt` (the campaign's own, not a per-field one — the model doesn't
+ * track that) stands in for "last touched". */
+function computeThemeAssets(theme: WebsiteTheme, updatedAt: string): PlatformAsset[] {
+  const make = (id: string, name: string, folder: string, url: string): PlatformAsset => ({
+    id,
+    name,
+    type: 'image',
+    folder,
+    sizeKb: dataUrlSizeKb(url),
+    url,
+    uploadedAt: updatedAt,
+  })
+  const out: PlatformAsset[] = []
+  if (theme.logoUrl) out.push(make('theme-logo', 'Logo', 'Logos', theme.logoUrl))
+  if (theme.faviconUrl) out.push(make('theme-favicon', 'Favicon', 'Icons', theme.faviconUrl))
+  if (theme.heroImageUrl) out.push(make('theme-hero', 'Image principale', 'Heroes', theme.heroImageUrl))
+  if (theme.backgroundImageUrl) out.push(make('theme-background', 'Image de fond', 'Backgrounds', theme.backgroundImageUrl))
+  theme.brandImages.forEach((img, i) => {
+    if (img) out.push(make(`theme-brand-${i}`, `Image de marque ${i + 1}`, 'Logos', img))
+  })
+  return out
+}
+
+/** The inverse of `computeThemeAssets`: deleting a theme-mirrored tile from
+ * the Assets library must clear the underlying theme field itself, or the
+ * tile would just reappear (it's derived, not stored). */
+function clearThemeAssetField(theme: WebsiteTheme, assetId: string): Partial<WebsiteTheme> {
+  if (assetId === 'theme-logo') return { logoUrl: '' }
+  if (assetId === 'theme-favicon') return { faviconUrl: '' }
+  if (assetId === 'theme-hero') return { heroImageUrl: '' }
+  if (assetId === 'theme-background') return { backgroundImageUrl: '' }
+  const brandMatch = /^theme-brand-(\d+)$/.exec(assetId)
+  if (brandMatch) {
+    const idx = Number(brandMatch[1])
+    return { brandImages: theme.brandImages.filter((_, i) => i !== idx) }
+  }
+  return {}
 }
 
 /** Ensure the unified store has a campaign (the real Marjane one). */
@@ -62,22 +142,23 @@ function ensureCampaigns() {
  * so the dashboard card agrees with what visitors actually see. */
 function isCampaignEnded(c: PlatformCampaign): boolean {
   if (c.status === 'ended' || c.status === 'archived') return true
-  if (!c.schedule.endDate) return false
-  const endMs = new Date(`${c.schedule.endDate}T${c.schedule.endTime || '23:59'}:00`).getTime()
-  return Date.now() > endMs
+  return isPastEndDate(c.schedule.endDate, c.schedule.endTime)
 }
 
 /** Convert a platform Campaign → admin Website view. */
 function campaignToWebsite(c: PlatformCampaign): Website {
-  // Ended takes priority over maintenance — a finished tombola shouldn't
-  // read as "Maintenance" just because it isn't 'live'/'published' either.
+  // Priority mirrors CampaignEngine.tsx's public-facing gate exactly:
+  // ended > maintenance > published/draft. A 'live'/'published' campaign
+  // with the admin's maintenanceMode toggle on (Settings.tsx) is NOT
+  // actually reachable by visitors — see UnavailableScreen — so the badge
+  // must say "Maintenance", not "Publié", while that toggle is on.
   const status: Website['status'] = isCampaignEnded(c)
     ? 'ended'
-    : c.status === 'live' || c.status === 'published'
-      ? 'published'
-      : c.status === 'draft' || c.status === 'ready'
-        ? 'draft'
-        : 'maintenance'
+    : c.maintenanceMode
+      ? 'maintenance'
+      : c.status === 'live' || c.status === 'published'
+        ? 'published'
+        : 'draft'
   return {
     id: c.id,
     name: c.name,
@@ -109,6 +190,8 @@ function campaignToWebsite(c: PlatformCampaign): Website {
       faviconUrl: c.theme.faviconUrl,
       heroImageUrl: c.theme.heroImageUrl,
       brandImages: c.theme.brandImages,
+      rulesUrl: c.theme.rulesUrl,
+      showBrandName: c.theme.showBrandName,
     },
     stats: {
       campaigns: 1,
@@ -120,6 +203,19 @@ function campaignToWebsite(c: PlatformCampaign): Website {
   }
 }
 
+/** Convert a platform Notification → admin AdminNotification view. */
+function notificationToAdmin(n: PlatformNotification): AdminNotification {
+  return {
+    id: n.id,
+    websiteId: n.campaignId,
+    title: n.title,
+    detail: n.detail,
+    time: n.time,
+    type: n.type,
+    read: n.read,
+  }
+}
+
 /** Convert a platform Campaign → admin Campaign view. */
 function campaignToAdminCampaign(c: PlatformCampaign): Campaign {
   return {
@@ -128,12 +224,15 @@ function campaignToAdminCampaign(c: PlatformCampaign): Campaign {
     name: c.name,
     startDate: c.schedule.startDate,
     endDate: c.schedule.endDate,
-    status:
-      c.status === 'live' || c.status === 'published'
+    // Mirrors campaignToWebsite's `isCampaignEnded` check — a campaign whose
+    // scheduled end date has passed drops into the "Terminée" Kanban column
+    // on its own, same as its status badge does elsewhere, without needing
+    // its `status` field to have been explicitly flipped to 'ended'.
+    status: isCampaignEnded(c)
+      ? 'finished'
+      : c.status === 'live' || c.status === 'published'
         ? 'active'
-        : c.status === 'ended'
-          ? 'finished'
-          : 'draft',
+        : 'draft',
     participants: c.analytics.participants,
     ticketsIssued: c.analytics.validatedTickets,
     threshold: typeof c.game.settings.threshold === 'number' ? c.game.settings.threshold : 100,
@@ -201,9 +300,13 @@ interface PlatformState {
   createProduct: (websiteId: string, input: Omit<Product, 'id' | 'websiteId' | 'updatedAt'>) => void
   updateProduct: (websiteId: string, id: string, patch: Partial<Product>) => void
   deleteProduct: (websiteId: string, id: string) => void
-  addAsset: (websiteId: string, name: string, folder: string, type: Asset['type'], sizeKb: number) => void
+  addAsset: (websiteId: string, name: string, folder: string, type: Asset['type'], sizeKb: number, url?: string) => void
   deleteAsset: (websiteId: string, id: string) => void
   markAllNotificationsRead: (websiteId: string) => void
+  /** Removes a single notification (swipe-to-delete in the notifications UI). */
+  deleteNotification: (websiteId: string, id: string) => void
+  /** Clears every notification for a site ("delete all"). */
+  clearNotifications: (websiteId: string) => void
   updateTranslation: (websiteId: string, key: string, lang: 'fr' | 'ar', value: string) => void
 }
 
@@ -214,9 +317,22 @@ function deriveView() {
   return {
     websites: campaigns.map(campaignToWebsite),
     campaigns: campaigns.map(campaignToAdminCampaign),
+    notifications: campaignState.notifications.map(notificationToAdmin),
     canUndo: campaignState.canUndo,
     canRedo: campaignState.canRedo,
   }
+}
+
+// A website/campaign's status can flip to "ended"/"finished" purely because
+// wall-clock time passed its schedule's end date — no store mutation
+// involved (see `isCampaignEnded` above). Folding a coarse, minute-grained
+// time bucket into `sync`'s idempotency key (and into `campaignsFor`'s
+// memoization key below) means that lifecycle transition gets picked up by
+// the periodic resync (see the `setInterval` in the store factory) instead
+// of sitting stale until the admin happens to edit something else.
+const TIME_BUCKET_MS = 60_000
+function timeBucket(): number {
+  return Math.floor(Date.now() / TIME_BUCKET_MS)
 }
 
 function sync(set: (partial: Partial<PlatformState>) => void) {
@@ -228,12 +344,18 @@ function sync(set: (partial: Partial<PlatformState>) => void) {
   // "getSnapshot should be cached" infinite loop in the admin selectors.
   // Undo/redo always change `campaigns` (different snapshot restored), so
   // `canUndo`/`canRedo` are folded into this same guarded key rather than
-  // needing a separate check.
-  const key = `${campaigns.map((c) => `${c.id}:${c.updatedAt}`).join('|')}::${campaignState.canUndo}:${campaignState.canRedo}`
+  // needing a separate check. Notifications aren't part of `campaigns` at
+  // all (they live in their own platform-store array — see
+  // platform/store.ts's `addNotification`/`markAllNotificationsRead`), so a
+  // cheap signature of them (count, unread count, most-recent id) is folded
+  // in too — otherwise a new notification, or mark-all-read, would never
+  // propagate to the admin's mirrored `notifications` array.
+  const notifSig = `${campaignState.notifications.length}:${campaignState.notifications.filter((n) => !n.read).length}:${campaignState.notifications[0]?.id ?? ''}`
+  const key = `${campaigns.map((c) => `${c.id}:${c.updatedAt}`).join('|')}::${campaignState.canUndo}:${campaignState.canRedo}::${notifSig}::${timeBucket()}`
   if (key === lastSyncKey) return
   lastSyncKey = key
-  const { websites, campaigns: adminCampaigns, canUndo, canRedo } = deriveView()
-  set({ websites, campaigns: adminCampaigns, canUndo, canRedo })
+  const { websites, campaigns: adminCampaigns, notifications, canUndo, canRedo } = deriveView()
+  set({ websites, campaigns: adminCampaigns, notifications, canUndo, canRedo })
 }
 
 let lastSyncKey = ''
@@ -250,25 +372,29 @@ ensureCampaigns()
 // calls or `useShallow` selectors on the components consuming them
 // (Overview/Campaigns/Analytics/Prizes/Products/Assets/Languages tabs) hit
 // React's "getSnapshot should be cached" infinite-render loop. Cache keyed
-// on `updatedAt`, which `updateCampaign` always bumps on any mutation — same
-// signal `lastSyncKey` already relies on above.
+// on `updatedAt` (which `updateCampaign` always bumps on any mutation — same
+// signal `lastSyncKey` already relies on above), plus an optional `extraKey`
+// — `campaignsFor` folds in the time bucket too, since its `status` field
+// can flip purely from wall-clock time passing (see `isCampaignEnded`).
 function memoizedFor<T>(
-  cache: Map<string, { updatedAt: string; result: T[] }>,
+  cache: Map<string, { key: string; result: T[] }>,
   websiteId: string,
   campaign: PlatformCampaign,
   compute: () => T[],
+  extraKey = '',
 ): T[] {
+  const key = `${campaign.updatedAt}::${extraKey}`
   const cached = cache.get(websiteId)
-  if (cached && cached.updatedAt === campaign.updatedAt) return cached.result
+  if (cached && cached.key === key) return cached.result
   const result = compute()
-  cache.set(websiteId, { updatedAt: campaign.updatedAt, result })
+  cache.set(websiteId, { key, result })
   return result
 }
 
-const productsCache = new Map<string, { updatedAt: string; result: Product[] }>()
-const assetsCache = new Map<string, { updatedAt: string; result: Asset[] }>()
-const translationsCache = new Map<string, { updatedAt: string; result: Translation[] }>()
-const campaignsForCache = new Map<string, { updatedAt: string; result: Campaign[] }>()
+const productsCache = new Map<string, { key: string; result: Product[] }>()
+const assetsCache = new Map<string, { key: string; result: Asset[] }>()
+const translationsCache = new Map<string, { key: string; result: Translation[] }>()
+const campaignsForCache = new Map<string, { key: string; result: Campaign[] }>()
 
 export const usePlatformStore = create<PlatformState>()((set, get) => {
   // Initial sync.
@@ -283,13 +409,25 @@ export const usePlatformStore = create<PlatformState>()((set, get) => {
     sync(set)
   })
 
+  // A campaign whose scheduled end date passes needs no admin action at all
+  // to become "ended"/"finished" — it's purely wall-clock time, not a store
+  // mutation. Nothing above re-runs `sync` for that on its own, so this is
+  // what actually makes a live tombola drop into the "Terminée" Kanban
+  // column (Campaigns.tsx) and its website card show "Ended" the moment its
+  // deadline passes, without the admin needing to touch anything else first.
+  // `sync`'s key folds in the same minute-grained `timeBucket()`, so this is
+  // a cheap no-op the other 59 seconds of every minute.
+  if (typeof window !== 'undefined') {
+    window.setInterval(() => sync(set), 30_000)
+  }
+
   return {
     websites: initial.websites,
     campaigns: initial.campaigns,
     assets: [],
     activity: [],
     products: [],
-    notifications: [],
+    notifications: initial.notifications,
     translations: [],
 
     canUndo: initial.canUndo,
@@ -348,7 +486,9 @@ export const usePlatformStore = create<PlatformState>()((set, get) => {
     campaignsFor: (websiteId) => {
       const c = useCampaignStore.getState().getCampaign(websiteId)
       if (!c) return []
-      return memoizedFor(campaignsForCache, websiteId, c, () => [campaignToAdminCampaign(c)])
+      // `campaignToAdminCampaign`'s status depends on `timeBucket()` too
+      // (isCampaignEnded) — see the periodic resync above.
+      return memoizedFor(campaignsForCache, websiteId, c, () => [campaignToAdminCampaign(c)], String(timeBucket()))
     },
 
     createCampaign: (websiteId, name) => {
@@ -422,8 +562,15 @@ export const usePlatformStore = create<PlatformState>()((set, get) => {
     assetsFor: (websiteId) => {
       const c = useCampaignStore.getState().getCampaign(websiteId)
       if (!c) return []
-      return memoizedFor(assetsCache, websiteId, c, () =>
-        c.assets.map((a) => ({
+      return memoizedFor(assetsCache, websiteId, c, () => {
+        // Real uploads (Documents/règlement included) + whatever the theme
+        // is actually using right now — see computeThemeAssets above. Any
+        // 'theme-*' id already sitting in `c.assets` (from campaigns saved
+        // by an older build that persisted these) is dropped here so it
+        // doesn't shadow or duplicate the freshly-computed one.
+        const manual = c.assets.filter((a) => !a.id.startsWith(THEME_ASSET_PREFIX))
+        const themeAssets = computeThemeAssets(c.theme, c.updatedAt)
+        return [...manual, ...themeAssets].map((a) => ({
           id: a.id,
           websiteId,
           name: a.name,
@@ -432,8 +579,8 @@ export const usePlatformStore = create<PlatformState>()((set, get) => {
           sizeKb: a.sizeKb,
           url: a.url,
           uploadedAt: a.uploadedAt,
-        })),
-      )
+        }))
+      })
     },
     activityFor: () => [],
     productsFor: (websiteId) => {
@@ -453,7 +600,7 @@ export const usePlatformStore = create<PlatformState>()((set, get) => {
         })),
       )
     },
-    notificationsFor: () => [],
+    notificationsFor: (websiteId) => get().notifications.filter((n) => n.websiteId === websiteId),
     translationsFor: (websiteId) => {
       const c = useCampaignStore.getState().getCampaign(websiteId)
       if (!c) return []
@@ -519,22 +666,30 @@ export const usePlatformStore = create<PlatformState>()((set, get) => {
       sync(set)
     },
 
-    addAsset: (websiteId, name, folder, type, sizeKb) => {
+    addAsset: (websiteId, name, folder, type, sizeKb, url) => {
       const c = useCampaignStore.getState().getCampaign(websiteId)
       if (!c) return
+      const newAsset: PlatformAsset = {
+        id: uid('ast'),
+        name,
+        type,
+        folder,
+        sizeKb,
+        url: url ?? '',
+        uploadedAt: new Date().toISOString(),
+      }
+      // "Documents" is a single-slot: it IS the tombola règlement the public
+      // form's consent checkbox links to (see theme.rulesUrl / FormScreen.tsx).
+      // Dragging a new PDF in there replaces whatever was live before, both
+      // in the Assets grid and on the actual site, instead of accumulating
+      // unused files nobody will ever see linked.
+      const isRules = isRulesFolder(folder)
+      const assets = isRules
+        ? [...c.assets.filter((a) => !isRulesFolder(a.folder)), newAsset]
+        : [...c.assets, newAsset]
       useCampaignStore.getState().updateCampaign(websiteId, {
-        assets: [
-          ...c.assets,
-          {
-            id: uid('ast'),
-            name,
-            type,
-            folder,
-            sizeKb,
-            url: '',
-            uploadedAt: new Date().toISOString(),
-          },
-        ],
+        assets,
+        ...(isRules ? { theme: { ...c.theme, rulesUrl: newAsset.url } } : {}),
       })
       sync(set)
     },
@@ -542,13 +697,41 @@ export const usePlatformStore = create<PlatformState>()((set, get) => {
     deleteAsset: (websiteId, id) => {
       const c = useCampaignStore.getState().getCampaign(websiteId)
       if (!c) return
+      // A theme-mirrored tile (logo/favicon/hero/background/brand image —
+      // see computeThemeAssets) is derived, not stored: deleting it means
+      // clearing the actual theme field, or it would just reappear on the
+      // very next read.
+      if (id.startsWith(THEME_ASSET_PREFIX)) {
+        const theme = { ...c.theme, ...clearThemeAssetField(c.theme, id) }
+        useCampaignStore.getState().updateCampaign(websiteId, { theme })
+        sync(set)
+        return
+      }
+      const target = c.assets.find((a) => a.id === id)
+      const assets = c.assets.filter((a) => a.id !== id)
+      // Deleting the live règlement PDF removes it from the app too — the
+      // consent link on the public form disappears rather than pointing at
+      // a file that no longer exists (see FormScreen.tsx).
+      const isRules = isRulesFolder(target?.folder)
       useCampaignStore.getState().updateCampaign(websiteId, {
-        assets: c.assets.filter((a) => a.id !== id),
+        assets,
+        ...(isRules ? { theme: { ...c.theme, rulesUrl: '' } } : {}),
       })
       sync(set)
     },
 
-    markAllNotificationsRead: () => {},
+    markAllNotificationsRead: (websiteId) => {
+      useCampaignStore.getState().markAllNotificationsRead(websiteId)
+      sync(set)
+    },
+    deleteNotification: (_websiteId, id) => {
+      useCampaignStore.getState().deleteNotification(id)
+      sync(set)
+    },
+    clearNotifications: (websiteId) => {
+      useCampaignStore.getState().clearNotifications(websiteId)
+      sync(set)
+    },
     updateTranslation: (websiteId, key, lang, value) => {
       const c = useCampaignStore.getState().getCampaign(websiteId)
       if (!c) return
@@ -565,4 +748,4 @@ export const usePlatformStore = create<PlatformState>()((set, get) => {
 })
 
 // Re-export helpers used elsewhere in the admin.
-export { uid, iso, buildMarjaneCampaign }
+export { uid, iso, buildMarjaneCampaign, isRulesFolder }

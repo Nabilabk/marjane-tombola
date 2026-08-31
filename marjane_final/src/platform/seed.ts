@@ -76,9 +76,11 @@ export function buildMarjaneCampaign(): Campaign {
       darkMode: false,
       backgroundImageUrl: '',
       logoUrl: marjane.logoUrl ?? '',
+      showBrandName: true,
       faviconUrl: '',
       heroImageUrl: '',
       brandImages: [],
+      rulesUrl: '/reglement-tombola-digitale.pdf',
     },
 
     pages: [
@@ -123,8 +125,12 @@ export function buildMarjaneCampaign(): Campaign {
       { id: uid('pz'), label: 'Pas de gain', image: '', value: 0, probability: 19.5, stock: 999999, remainingStock: 999999, winningRules: 'Aucun gain', status: 'active' },
     ],
 
+    // No logo entry here — the admin's Assets library derives the Logos/
+    // Icons/Heroes/Backgrounds tiles live from `theme.logoUrl` etc. (see
+    // admin/lib/store.ts's computeThemeAssets), so seeding one here would
+    // just be dropped as a duplicate. Only the règlement is a real, directly
+    // uploaded asset (see theme.rulesUrl / addAsset's Documents handling).
     assets: [
-      { id: uid('as'), name: 'marjane-logo.png', type: 'image', folder: 'Logos', sizeKb: 84, url: marjane.logoUrl ?? '', uploadedAt: now },
       { id: uid('as'), name: 'reglement-tombola-digitale.pdf', type: 'document', folder: 'Documents', sizeKb: 1240, url: '/reglement-tombola-digitale.pdf', uploadedAt: now },
     ],
 

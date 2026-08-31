@@ -576,7 +576,7 @@ class CombinedRule(BaseModel):
     threshold: float
 
 class ProductRules(BaseModel):
-    mode: str = "per_article"        # "per_article" | "combined"
+    mode: str = "per_article"        # "per_article" | "combined" | "both"
     articles: list[ArticleRule] = []
     combinedRule: Optional[CombinedRule] = None
     # per_article mode only: how many of `articles` must individually satisfy
@@ -584,6 +584,10 @@ class ProductRules(BaseModel):
     # the original OR-across-articles behavior; raising it requires several
     # distinct selected articles to each show up before the receipt counts.
     minMatches: int = 1
+    # mode="both" requires BOTH the per_article check (matched >= minMatches)
+    # AND the combinedRule check to pass — an admin layering an extra
+    # aggregate condition (e.g. total spend) on top of per-article rules,
+    # not an alternative way to qualify.
 
 # --------------------------------------------------------------------------
 # Campaign lifecycle — whether this tombola is currently open to play at
@@ -1981,7 +1985,10 @@ def get_product_rules(slug: str, _: dict = Depends(require_campaign_access)):
 
 @app.put("/api/admin/campaign/product-rules", response_model=ProductRules)
 def put_product_rules(slug: str, rules: ProductRules, actor: dict = Depends(require_campaign_access)):
-    if rules.mode == "per_article":
+    if rules.mode not in ("per_article", "combined", "both"):
+        raise HTTPException(status_code=422, detail="mode must be 'per_article', 'combined', or 'both'.")
+
+    if rules.mode in ("per_article", "both"):
         for a in rules.articles:
             if not a.ruleType or a.threshold is None:
                 raise HTTPException(
@@ -1993,14 +2000,12 @@ def put_product_rules(slug: str, rules: ProductRules, actor: dict = Depends(requ
                 status_code=422,
                 detail=f"minMatches must be between 1 and {len(rules.articles)} (the number of selected articles).",
             )
-    elif rules.mode == "combined":
-        if not rules.combinedRule:
-            raise HTTPException(
-                status_code=422,
-                detail="combinedRule is required when mode is 'combined'.",
-            )
-    else:
-        raise HTTPException(status_code=422, detail="mode must be 'per_article' or 'combined'.")
+
+    if rules.mode in ("combined", "both") and not rules.combinedRule:
+        raise HTTPException(
+            status_code=422,
+            detail=f"combinedRule is required when mode is '{rules.mode}'.",
+        )
 
     with get_campaign_conn(slug) as conn:
         campaign = _get_or_create_campaign(conn)

@@ -30,6 +30,12 @@ function clampMinMatches(articleCount: number, minMatches: number) {
   return Math.min(Math.max(1, minMatches), Math.max(1, articleCount))
 }
 
+/** Reads the two independent on/off switches out of the combined `mode`
+ * enum ('both' means both are on). */
+function modeParts(mode: ProductRules['mode']) {
+  return { perArticleOn: mode === 'per_article' || mode === 'both', combinedOn: mode === 'combined' || mode === 'both' }
+}
+
 export default function Products() {
   // This page is routed at `site/:siteId/products` (AdminApp.tsx) but used
   // to never actually read `siteId` — every site's Products tab silently
@@ -77,13 +83,20 @@ export default function Products() {
     }
   }, [slug])
 
-  function setMode(mode: ProductRules['mode']) {
-    setRules((r) => ({
-      ...r,
-      mode,
-      combinedRule: mode === 'combined' ? (r.combinedRule ?? { ruleType: 'quantity', threshold: 1 }) : r.combinedRule,
-      minMatches: clampMinMatches(r.articles.length, r.minMatches),
-    }))
+  function setModePart(part: 'per_article' | 'combined', on: boolean) {
+    setRules((r) => {
+      const cur = modeParts(r.mode)
+      const nextPer = part === 'per_article' ? on : cur.perArticleOn
+      const nextComb = part === 'combined' ? on : cur.combinedOn
+      if (!nextPer && !nextComb) return r // at least one must stay enabled
+      const mode: ProductRules['mode'] = nextPer && nextComb ? 'both' : nextPer ? 'per_article' : 'combined'
+      return {
+        ...r,
+        mode,
+        combinedRule: nextComb ? (r.combinedRule ?? { ruleType: 'price', threshold: 1 }) : r.combinedRule,
+        minMatches: clampMinMatches(r.articles.length, r.minMatches),
+      }
+    })
   }
 
   function updateArticle(code: string, patch: Partial<ArticleRule>) {
@@ -141,17 +154,20 @@ export default function Products() {
     })
   }
 
+  const { perArticleOn, combinedOn } = modeParts(rules.mode)
+
   const validationError = useMemo(() => {
     if (rules.articles.length === 0) return t('products.errAddOne')
-    if (rules.mode === 'per_article') {
+    if (perArticleOn) {
       if (rules.articles.some((a) => !a.ruleType || !a.threshold || a.threshold <= 0)) {
         return t('products.errRuleAndThreshold')
       }
       if (rules.minMatches < 1 || rules.minMatches > rules.articles.length) {
         return t('products.errMinMatchesRange').replace('{max}', String(rules.articles.length))
       }
-    } else if (!rules.combinedRule || rules.combinedRule.threshold <= 0) {
-      return t('products.errCombinedRule')
+    }
+    if (combinedOn && (!rules.combinedRule || rules.combinedRule.threshold <= 0)) {
+      return t('products.errPriceRule')
     }
     return null
   }, [rules, t])
@@ -226,7 +242,7 @@ export default function Products() {
   const otherCampaigns = campaigns.filter((c) => c.id !== siteId).map((c) => ({ id: c.id, name: c.name, slug: c.slug }))
 
   const ruleColumns: Column<ArticleRule>[] =
-    rules.mode === 'per_article'
+    perArticleOn
       ? [
           {
             key: 'ruleType',
@@ -401,69 +417,24 @@ export default function Products() {
 
       <Card className="p-4">
         <div className="flex flex-wrap items-center gap-3">
-          <div className="inline-flex rounded-[var(--pf-radius-sm)] border border-[var(--pf-border)] p-0.5">
-            <Button size="sm" variant={rules.mode === 'per_article' ? 'primary' : 'ghost'} onClick={() => setMode('per_article')}>
+          <div className="flex items-center gap-1.5">
+            <Button
+              size="sm"
+              variant={perArticleOn ? 'primary' : 'outline'}
+              onClick={() => setModePart('per_article', !perArticleOn)}
+              aria-pressed={perArticleOn}
+            >
               {t('products.perArticleThresholds')}
             </Button>
-            <Button size="sm" variant={rules.mode === 'combined' ? 'primary' : 'ghost'} onClick={() => setMode('combined')}>
-              {t('products.combinedThreshold')}
+            <Button
+              size="sm"
+              variant={combinedOn ? 'primary' : 'outline'}
+              onClick={() => setModePart('combined', !combinedOn)}
+              aria-pressed={combinedOn}
+            >
+              {t('products.priceThreshold')}
             </Button>
           </div>
-
-          {rules.mode === 'per_article' && (
-            <div className="flex items-center gap-2 text-[13px] text-[var(--pf-ink-muted)]">
-              <span>{t('products.atLeast')}</span>
-              <input
-                type="number"
-                min={1}
-                max={Math.max(1, rules.articles.length)}
-                value={rules.minMatches}
-                onChange={(e) =>
-                  setRules((r) => ({
-                    ...r,
-                    minMatches: clampMinMatches(r.articles.length, Number(e.target.value)),
-                  }))
-                }
-                className="h-9 w-16 rounded-[var(--pf-radius-sm)] border border-[var(--pf-border-strong)] bg-white px-2.5 text-[13px] text-[var(--pf-ink)] shadow-[var(--pf-shadow-xs)] focus:outline-none focus:border-[var(--pf-accent)] focus:ring-4 focus:ring-[var(--pf-accent)]/12"
-              />
-              <span>
-                article{rules.minMatches === 1 ? '' : 's'} différent{rules.minMatches === 1 ? '' : 's'} trouvé
-                {rules.minMatches === 1 ? '' : 's'} sur le ticket (sur {rules.articles.length} sélectionné
-                {rules.articles.length === 1 ? '' : 's'})
-              </span>
-            </div>
-          )}
-
-          {rules.mode === 'combined' && (
-            <div className="flex items-center gap-2">
-              <Select
-                value={rules.combinedRule?.ruleType ?? 'quantity'}
-                onChange={(e) =>
-                  setRules((r) => ({
-                    ...r,
-                    combinedRule: { ruleType: e.target.value as RuleType, threshold: r.combinedRule?.threshold ?? 1 },
-                  }))
-                }
-                className="w-44"
-              >
-                <option value="quantity">{t('products.totalQuantityGte')}</option>
-                <option value="price">{t('products.totalSpendGte')}</option>
-              </Select>
-              <input
-                type="number"
-                min={0}
-                step={rules.combinedRule?.ruleType === 'price' ? 0.5 : 1}
-                value={rules.combinedRule?.threshold ?? 1}
-                onChange={(e) =>
-                  setRules((r) => ({
-                    ...r,
-                    combinedRule: { ruleType: r.combinedRule?.ruleType ?? 'quantity', threshold: Number(e.target.value) },
-                  }))
-                }
-                className="h-9 w-28 rounded-[var(--pf-radius-sm)] border border-[var(--pf-border-strong)] bg-white px-2.5 text-[13px] text-[var(--pf-ink)] shadow-[var(--pf-shadow-xs)] focus:outline-none focus:border-[var(--pf-accent)] focus:ring-4 focus:ring-[var(--pf-accent)]/12"
-              />
-            </div>
-          )}
 
           <Button
             size="sm"
@@ -475,6 +446,70 @@ export default function Products() {
             {t('products.groupByRayon')}
           </Button>
         </div>
+
+        {(perArticleOn || combinedOn) && (
+          <div className="mt-3 flex flex-col gap-2 rounded-[var(--pf-radius-sm)] border border-[var(--pf-border)] bg-[var(--pf-sunken)]/40 p-3">
+            {perArticleOn && (
+              <div className="flex flex-wrap items-center gap-2 text-[13px] text-[var(--pf-ink-muted)]">
+                <span>{t('products.atLeast')}</span>
+                <input
+                  type="number"
+                  min={1}
+                  max={Math.max(1, rules.articles.length)}
+                  value={rules.minMatches}
+                  onChange={(e) =>
+                    setRules((r) => ({
+                      ...r,
+                      minMatches: clampMinMatches(r.articles.length, Number(e.target.value)),
+                    }))
+                  }
+                  className="h-9 w-16 rounded-[var(--pf-radius-sm)] border border-[var(--pf-border-strong)] bg-white px-2.5 text-[13px] text-[var(--pf-ink)] shadow-[var(--pf-shadow-xs)] focus:outline-none focus:border-[var(--pf-accent)] focus:ring-4 focus:ring-[var(--pf-accent)]/12"
+                />
+                <span>
+                  article{rules.minMatches === 1 ? '' : 's'} différent{rules.minMatches === 1 ? '' : 's'} trouvé
+                  {rules.minMatches === 1 ? '' : 's'} sur le ticket (sur {rules.articles.length} sélectionné
+                  {rules.articles.length === 1 ? '' : 's'})
+                </span>
+              </div>
+            )}
+
+            {perArticleOn && combinedOn && (
+              <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.04em] text-[var(--pf-accent)]">
+                <span className="h-px flex-1 bg-[var(--pf-border)]" />
+                {t('products.andBothActive')}
+                <span className="h-px flex-1 bg-[var(--pf-border)]" />
+              </div>
+            )}
+
+            {combinedOn && (
+              <div className="flex flex-wrap items-center gap-2 text-[13px] text-[var(--pf-ink-muted)]">
+                <span>
+                  {t(rules.combinedRule?.ruleType === 'quantity' ? 'products.totalQuantityGte' : 'products.totalSpendGte')}
+                </span>
+                <input
+                  type="number"
+                  min={rules.combinedRule?.ruleType === 'quantity' ? 1 : 0}
+                  step={rules.combinedRule?.ruleType === 'quantity' ? 1 : 0.5}
+                  value={rules.combinedRule?.threshold ?? 1}
+                  onChange={(e) =>
+                    setRules((r) => ({
+                      ...r,
+                      // Keep whatever ruleType the combined rule already had — only the
+                      // threshold number is editable here. Forcing this to 'price' used
+                      // to silently convert a pre-existing quantity-based combined rule
+                      // ("qualifies at N items") into a spend-based one ("qualifies at
+                      // N MAD") the moment its threshold was tweaked, with no admin
+                      // confirmation. New combined rules still default to 'price'.
+                      combinedRule: { ruleType: r.combinedRule?.ruleType ?? 'price', threshold: Number(e.target.value) },
+                    }))
+                  }
+                  className="h-9 w-28 rounded-[var(--pf-radius-sm)] border border-[var(--pf-border-strong)] bg-white px-2.5 text-[13px] text-[var(--pf-ink)] shadow-[var(--pf-shadow-xs)] focus:outline-none focus:border-[var(--pf-accent)] focus:ring-4 focus:ring-[var(--pf-accent)]/12"
+                />
+                {rules.combinedRule?.ruleType !== 'quantity' && <span>MAD</span>}
+              </div>
+            )}
+          </div>
+        )}
 
         <div className="mt-4 flex flex-wrap items-center gap-3">
           <SearchInput value={search} onChange={setSearch} placeholder={t('products.searchSelectedPlaceholder')} className="max-w-xs" />
@@ -516,7 +551,7 @@ export default function Products() {
         {selectedCodes.size > 0 && (
           <div className="mt-3 flex items-center gap-2 rounded-[var(--pf-radius-sm)] border border-[var(--pf-accent)]/30 bg-[var(--pf-accent-soft)] px-3 py-2">
             <span className="text-[12.5px] font-medium text-[var(--pf-accent)]">{selectedCodes.size} {t('products.selected')}</span>
-            <Button size="xs" variant="secondary" onClick={() => setBulkRuleOpen(true)} disabled={rules.mode !== 'per_article'}>
+            <Button size="xs" variant="secondary" onClick={() => setBulkRuleOpen(true)} disabled={!perArticleOn}>
               {t('products.setRule')}
             </Button>
             <Button size="xs" variant="danger" onClick={bulkRemove}>

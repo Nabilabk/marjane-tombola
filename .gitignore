@@ -32,3 +32,5 @@ last_scan_debug.txt
 # Local screenshots and presentation decks — not part of the app, keep out of the repo
 /Capture d'écran*.png
 /Marjane-Campaign-Studio-Presentation.*
+/Marjane_Tombola_Presentation_*
+/DEPLOY.md

@@ -67,7 +67,13 @@ export function ScreenTitle({ label, title }: { label: ReactNode; title: ReactNo
    main action reads as the same "big game button" family. Radius follows
    the campaign's own corner-radius setting (var(--radius)) instead of a
    hardcoded pill, and the bottom "ledge" shadow gives it the same
-   pressable, physical feel as the dice/cards buttons. */
+   pressable, physical feel as the dice/cards buttons.
+
+   Look + size come from the --btn-* custom properties that
+   `applyCampaignTheme` (engine/theme.ts) derives from the Theme editor's
+   "Buttons" panel (style: solid/outline/soft, size: sm/md/lg) — the
+   fallbacks below reproduce the old hardcoded solid look for any embed
+   that renders this without going through applyCampaignTheme first. */
 export function PrimaryButton({
   children,
   onClick,
@@ -87,17 +93,25 @@ export function PrimaryButton({
       whileHover={
         disabled
           ? undefined
-          : { y: -2, boxShadow: '0 4px 0 0 color-mix(in srgb, var(--brand-primary) 70%, black), 0 18px 36px -10px color-mix(in srgb, var(--brand-primary) 60%, transparent)' }
+          : {
+              y: -2,
+              boxShadow:
+                'var(--btn-shadow-hover, 0 4px 0 0 color-mix(in srgb, var(--brand-primary) 70%, black), 0 18px 36px -10px color-mix(in srgb, var(--brand-primary) 60%, transparent))',
+            }
       }
       whileTap={disabled ? undefined : { y: 3, scale: 0.98 }}
       transition={{ type: 'spring', stiffness: 500, damping: 26 }}
-      className="inline-flex w-full items-center justify-center gap-2 px-7 py-3.5 text-[15px] font-bold text-white disabled:cursor-not-allowed disabled:opacity-40 sm:w-auto"
+      className="inline-flex w-full items-center justify-center gap-2 font-bold disabled:cursor-not-allowed disabled:opacity-40 sm:w-auto"
       style={{
         borderRadius: 'calc(var(--radius, 14px) + 4px)',
+        padding: 'var(--btn-py, 0.875rem) var(--btn-px, 1.75rem)',
+        fontSize: 'var(--btn-font, 15px)',
+        color: 'var(--btn-color, #fff)',
+        border: 'var(--btn-border, none)',
         background:
-          'linear-gradient(155deg, color-mix(in srgb, var(--brand-primary) 85%, white 15%), var(--brand-primary))',
+          'var(--btn-bg, linear-gradient(155deg, color-mix(in srgb, var(--brand-primary) 85%, white 15%), var(--brand-primary)))',
         boxShadow:
-          '0 4px 0 0 color-mix(in srgb, var(--brand-primary) 70%, black), 0 14px 28px -10px color-mix(in srgb, var(--brand-primary) 48%, transparent), inset 0 1px 0 rgba(255,255,255,0.3)',
+          'var(--btn-shadow, 0 4px 0 0 color-mix(in srgb, var(--brand-primary) 70%, black), 0 14px 28px -10px color-mix(in srgb, var(--brand-primary) 48%, transparent), inset 0 1px 0 rgba(255,255,255,0.3))',
       }}
     >
       {children}
@@ -105,6 +119,10 @@ export function PrimaryButton({
   )
 }
 
+/* Secondary action — always the same translucent "ghost" treatment (the
+   Theme editor's buttonStyle choices are for the primary CTA only), but
+   still follows the buttonSize setting so it stays the same height as the
+   PrimaryButton it's usually paired with. */
 export function GhostButton({ children, onClick }: { children: ReactNode; onClick?: () => void }) {
   return (
     <motion.button
@@ -112,9 +130,11 @@ export function GhostButton({ children, onClick }: { children: ReactNode; onClic
       whileHover={{ y: -2 }}
       whileTap={{ y: 2, scale: 0.98 }}
       transition={{ type: 'spring', stiffness: 500, damping: 26 }}
-      className="inline-flex items-center justify-center gap-2 border px-7 py-3.5 text-[15px] font-semibold backdrop-blur-md"
+      className="inline-flex items-center justify-center gap-2 border font-semibold backdrop-blur-md"
       style={{
         borderRadius: 'calc(var(--radius, 14px) + 4px)',
+        padding: 'var(--btn-py, 0.875rem) var(--btn-px, 1.75rem)',
+        fontSize: 'var(--btn-font, 15px)',
         borderColor: 'var(--hairline)',
         color: 'var(--ink)',
         background: 'color-mix(in srgb, var(--card) 55%, transparent)',

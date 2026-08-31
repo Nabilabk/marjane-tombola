@@ -1,33 +1,39 @@
 import { useRef, useState } from 'react'
+import { useParams } from 'react-router-dom'
 import { ImageIcon, Upload, X } from 'lucide-react'
+import { useShallow } from 'zustand/react/shallow'
 import { Dialog } from './Dialog'
 import { cn } from '../../lib/cn'
 import { MAX_FILE_SIZE_MB, isRenderableImage, readImageFile, validateImageFile } from '../../lib/image'
 import { useAdminLang } from '../../lib/adminI18n'
-
-const DEMO_IMAGES: { label: string; bg: string; emoji?: string }[] = [
-  { label: 'logo', bg: '#EAF1FE', emoji: '✦' },
-  { label: 'hero-1', bg: '#E7F8F1', emoji: '🏔' },
-  { label: 'hero-2', bg: '#FDF3E7', emoji: '🎉' },
-  { label: 'packshot', bg: '#FDEBEB', emoji: '🛍' },
-  { label: 'brand-1', bg: '#E5E7EB', emoji: '⬡' },
-  { label: 'brand-2', bg: '#EDE9FE', emoji: '◆' },
-]
+import { usePlatformStore } from '../../lib/store'
 
 export function MediaPicker({
   value,
   onChange,
   label,
+  compact,
 }: {
   value: string
   onChange: (v: string) => void
   label?: string
+  /** Small square tile for grids (e.g. brand image slots) instead of the full-width h-20 preview. */
+  compact?: boolean
 }) {
   const [open, setOpen] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [dragActive, setDragActive] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const { t } = useAdminLang()
+  const { siteId } = useParams()
+  // What to offer in "choose from the media library" below — every real
+  // image already in this site's Assets library (uploads AND whatever's
+  // currently live as logo/favicon/hero/background/brand images — see
+  // admin/lib/store.ts's assetsFor/computeThemeAssets), not a fixed set of
+  // decorative emoji unrelated to the actual campaign.
+  const libraryImages = usePlatformStore(
+    useShallow((s) => (siteId ? s.assetsFor(siteId).filter((a) => a.type === 'image' && a.url) : [])),
+  )
 
   async function handleFile(file: File | undefined) {
     if (!file) return
@@ -78,7 +84,8 @@ export function MediaPicker({
           onDragLeave={onDragLeave}
           onDrop={onDrop}
           className={cn(
-            'flex h-20 w-full items-center justify-center overflow-hidden rounded-[var(--pf-radius-md)] border border-dashed transition-colors',
+            'flex w-full items-center justify-center overflow-hidden rounded-[var(--pf-radius-md)] border border-dashed transition-colors',
+            compact ? 'h-14' : 'h-20',
             dragActive
               ? 'border-[var(--pf-accent)] bg-[var(--pf-accent-soft)]/60'
               : 'border-[var(--pf-border-strong)] bg-[var(--pf-sunken)]/50 hover:border-[var(--pf-accent)] hover:bg-[var(--pf-accent-soft)]/40',
@@ -87,13 +94,27 @@ export function MediaPicker({
           {value && isRenderableImage(value) ? (
             <img src={value} alt="" className="h-full w-full object-contain p-1.5" />
           ) : value ? (
-            <div
-              className="flex h-full w-full flex-col items-center justify-center gap-1 text-white"
-              style={{ background: value.startsWith('#') ? value : 'var(--pf-sunken-2)', color: value.startsWith('#') ? '#fff' : undefined }}
-            >
-              <ImageIcon className="h-5 w-5 opacity-80" />
-              <span className="max-w-full truncate px-2 text-[11px] font-medium opacity-90">{value.replace('#', '')}</span>
-            </div>
+            (() => {
+              const isHex = value.startsWith('#')
+              return (
+                <div
+                  className="flex h-full w-full flex-col items-center justify-center gap-1"
+                  style={{
+                    background: isHex ? value : 'var(--pf-sunken-2)',
+                    color: isHex ? '#fff' : undefined,
+                  }}
+                >
+                  <ImageIcon className={compact ? 'h-4 w-4 text-white opacity-80' : 'h-5 w-5 text-white opacity-80'} />
+                  {!compact && (
+                    <span className="max-w-full truncate px-2 text-[11px] font-medium text-white opacity-90">
+                      {value.replace('#', '')}
+                    </span>
+                  )}
+                </div>
+              )
+            })()
+          ) : compact ? (
+            <Upload className="h-4 w-4 text-[var(--pf-ink-faint)]" />
           ) : (
             <span className="flex flex-col items-center gap-1.5 text-[var(--pf-ink-muted)]">
               <Upload className="h-5 w-5" />
@@ -159,32 +180,38 @@ export function MediaPicker({
             </p>
           )}
 
-          <div>
-            <span className="mb-2 block text-[12px] font-medium text-[var(--pf-ink-muted)]">{t('mediaPicker.orChoosePlaceholder')}</span>
-            <div className="grid grid-cols-3 gap-3">
-              {DEMO_IMAGES.map((img) => (
-                <button
-                  key={img.label}
-                  type="button"
-                  onClick={() => {
-                    onChange(img.label)
-                    setOpen(false)
-                  }}
-                  className={cn(
-                    'group relative overflow-hidden rounded-[var(--pf-radius-sm)] border transition-all hover:border-[var(--pf-accent)]',
-                    value === img.label ? 'border-[var(--pf-accent)] ring-2 ring-[var(--pf-accent)]/25' : 'border-[var(--pf-border)]',
-                  )}
-                >
-                  <div className="flex h-20 items-center justify-center text-[28px]" style={{ background: img.bg }}>
-                    {img.emoji}
-                  </div>
-                  <div className="border-t border-[var(--pf-border)] bg-white px-2 py-1.5 text-left font-mono text-[11px] text-[var(--pf-ink-muted)]">
-                    {img.label}
-                  </div>
-                </button>
-              ))}
+          {libraryImages.length > 0 && (
+            <div>
+              <span className="mb-2 block text-[12px] font-medium text-[var(--pf-ink-muted)]">{t('mediaPicker.fromLibrary')}</span>
+              <div className="grid grid-cols-3 gap-3">
+                {libraryImages.map((img) => (
+                  <button
+                    key={img.id}
+                    type="button"
+                    onClick={() => {
+                      onChange(img.url)
+                      setOpen(false)
+                    }}
+                    className={cn(
+                      'group relative overflow-hidden rounded-[var(--pf-radius-sm)] border transition-all hover:border-[var(--pf-accent)]',
+                      value === img.url ? 'border-[var(--pf-accent)] ring-2 ring-[var(--pf-accent)]/25' : 'border-[var(--pf-border)]',
+                    )}
+                  >
+                    <div className="flex h-20 items-center justify-center bg-white">
+                      {isRenderableImage(img.url) ? (
+                        <img src={img.url} alt="" className="h-full w-full object-contain p-2" />
+                      ) : (
+                        <ImageIcon className="h-6 w-6 text-[var(--pf-ink-faint)]" />
+                      )}
+                    </div>
+                    <div className="truncate border-t border-[var(--pf-border)] bg-white px-2 py-1.5 text-left font-mono text-[11px] text-[var(--pf-ink-muted)]">
+                      {img.name}
+                    </div>
+                  </button>
+                ))}
+              </div>
             </div>
-          </div>
+          )}
         </div>
       </Dialog>
     </div>

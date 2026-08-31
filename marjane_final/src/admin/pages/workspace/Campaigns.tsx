@@ -12,6 +12,7 @@ import { cn } from '../../lib/cn'
 import { Dropdown, DropdownItem } from '../../components/ui/Dropdown'
 import { useAdminLang } from '../../lib/adminI18n'
 import { useLiveTotals } from '../../lib/useLiveTotals'
+import { isPastEndDate } from '../../../platform/schedule'
 
 const COLUMNS: { id: Campaign['status']; labelKey: string }[] = [
   { id: 'draft', labelKey: 'campaigns.statusDraft' },
@@ -29,22 +30,32 @@ function fmt(d: string) {
   return new Date(d).toLocaleDateString('fr-FR', { day: '2-digit', month: 'short', year: 'numeric' })
 }
 
+// `isPastEndDate` (platform/schedule.ts) is the same check store.ts's
+// `isCampaignEnded` runs server-side of the admin view. Used here to decide
+// whether "Activate" can apply immediately or needs a new end date first
+// (see `requestActivate` below), since re-activating without moving the
+// date would just have it fall straight back into "Terminée" on the next
+// resync.
+
 function CampaignCard({
   campaign,
+  siteSlug,
   liveParticipants,
   dragging,
   onDragStart,
   onDragEnd,
+  onRequestActivate,
 }: {
   campaign: Campaign
+  siteSlug: string | undefined
   liveParticipants: number
   dragging: boolean
   onDragStart: (e: DragEvent) => void
   onDragEnd: () => void
+  onRequestActivate: (id: string) => void
 }) {
   const duplicateCampaign = usePlatformStore((s) => s.duplicateCampaign)
   const archiveCampaign = usePlatformStore((s) => s.archiveCampaign)
-  const updateStatus = usePlatformStore((s) => s.updateCampaignStatus)
   const { t } = useAdminLang()
 
   const statusTone =
@@ -87,14 +98,18 @@ function CampaignCard({
             </button>
           }
         >
-          <DropdownItem onClick={() => {}}>
+          <DropdownItem
+            onClick={() => {
+              if (siteSlug) window.open(`/${siteSlug}`, '_blank', 'noopener,noreferrer')
+            }}
+          >
             <Eye className="h-4 w-4 text-[var(--pf-ink-faint)]" /> {t('campaigns.preview')}
           </DropdownItem>
           <DropdownItem onClick={() => duplicateCampaign(campaign.id)}>
             <Copy className="h-4 w-4 text-[var(--pf-ink-faint)]" /> {t('platform.duplicate')}
           </DropdownItem>
           {campaign.status !== 'active' && (
-            <DropdownItem onClick={() => updateStatus(campaign.id, 'active')}>
+            <DropdownItem onClick={() => onRequestActivate(campaign.id)}>
               <CheckCircle2 className="h-4 w-4 text-[var(--pf-ink-faint)]" /> {t('campaigns.activate')}
             </DropdownItem>
           )}
@@ -123,6 +138,7 @@ export default function Campaigns() {
   const liveTotals = useLiveTotals(website?.slug)
   const createCampaign = usePlatformStore((s) => s.createCampaign)
   const updateStatus = usePlatformStore((s) => s.updateCampaignStatus)
+  const updateSchedule = usePlatformStore((s) => s.updateSchedule)
   const [dialogOpen, setDialogOpen] = useState(false)
   const [name, setName] = useState('')
   const { t } = useAdminLang()
@@ -133,10 +149,42 @@ export default function Campaigns() {
   const [draggedId, setDraggedId] = useState<string | null>(null)
   const [overCol, setOverCol] = useState<Campaign['status'] | null>(null)
 
+  // Reactivating a finished tombola whose end date has already passed can't
+  // just flip its status — the next resync would immediately drop it back
+  // into "Terminée" (see store.ts's `isCampaignEnded`/`campaignToAdminCampaign`).
+  // So activating one asks for a new end date first instead of silently
+  // failing to stick.
+  const [reactivateId, setReactivateId] = useState<string | null>(null)
+  const [reactivateEndDate, setReactivateEndDate] = useState('')
+  const [reactivateEndTime, setReactivateEndTime] = useState('')
+
+  function requestActivate(id: string) {
+    const c = campaigns.find((c) => c.id === id)
+    if (c && isPastEndDate(c.endDate, website?.schedule.endTime ?? '')) {
+      setReactivateId(id)
+      setReactivateEndDate(c.endDate)
+      setReactivateEndTime(website?.schedule.endTime || '23:59')
+    } else {
+      updateStatus(id, 'active')
+    }
+  }
+
+  const reactivateStillPast = isPastEndDate(reactivateEndDate, reactivateEndTime)
+
+  function confirmReactivate() {
+    if (!reactivateId || reactivateStillPast) return
+    updateSchedule(reactivateId, { endDate: reactivateEndDate, endTime: reactivateEndTime })
+    updateStatus(reactivateId, 'active')
+    setReactivateId(null)
+  }
+
   function handleDrop(e: DragEvent<HTMLDivElement>, status: Campaign['status']) {
     e.preventDefault()
     const id = e.dataTransfer.getData('text/plain')
-    if (id) updateStatus(id, status)
+    if (id) {
+      if (status === 'active') requestActivate(id)
+      else updateStatus(id, status)
+    }
     setDraggedId(null)
     setOverCol(null)
   }
@@ -201,6 +249,7 @@ export default function Campaigns() {
                   <CampaignCard
                     key={c.id}
                     campaign={c}
+                    siteSlug={website?.slug}
                     liveParticipants={liveTotals.loading ? c.participants : liveTotals.participants}
                     dragging={draggedId === c.id}
                     onDragStart={(e) => {
@@ -212,6 +261,7 @@ export default function Campaigns() {
                       setDraggedId(null)
                       setOverCol(null)
                     }}
+                    onRequestActivate={requestActivate}
                   />
                 ))}
                 {col.items.length === 0 && (
@@ -251,6 +301,36 @@ export default function Campaigns() {
               }}
             >
               {t('campaigns.createCampaign')}
+            </Button>
+          </div>
+        </div>
+      </Dialog>
+
+      <Dialog
+        open={reactivateId !== null}
+        onClose={() => setReactivateId(null)}
+        title={t('campaigns.reactivateTitle')}
+        description={t('campaigns.reactivateDesc')}
+        width={420}
+      >
+        <div className="space-y-4">
+          <div className="grid grid-cols-2 gap-4">
+            <Field label={t('settings.endDate')}>
+              <Input type="date" autoFocus value={reactivateEndDate} onChange={(e) => setReactivateEndDate(e.target.value)} />
+            </Field>
+            <Field label={t('settings.endTime')}>
+              <Input type="time" value={reactivateEndTime} onChange={(e) => setReactivateEndTime(e.target.value)} />
+            </Field>
+          </div>
+          {reactivateStillPast && (
+            <p className="text-[12px] text-[var(--pf-danger)]">{t('campaigns.reactivateDateError')}</p>
+          )}
+          <div className="flex justify-end gap-2 pt-1">
+            <Button variant="ghost" onClick={() => setReactivateId(null)}>
+              {t('common.cancel')}
+            </Button>
+            <Button variant="primary" disabled={reactivateStillPast} onClick={confirmReactivate}>
+              {t('campaigns.reactivateConfirm')}
             </Button>
           </div>
         </div>

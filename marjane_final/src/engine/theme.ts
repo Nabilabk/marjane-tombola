@@ -10,7 +10,7 @@
 */
 
 import type { CSSProperties } from 'react'
-import type { Campaign } from '../platform/types'
+import type { Campaign, FontFamily } from '../platform/types'
 import { resolveProbabilities } from '../platform/probabilities'
 import type {
   ScratchCardTheme,
@@ -32,12 +32,41 @@ export interface BrandColors {
   accent: string
 }
 
-/** Derive accessible neutrals from the brand colors. */
-export function applyCampaignTheme(campaign: Campaign) {
+/**
+ * Font choices offered in the ThemeEditor, mapped to their CSS font-family
+ * stack. Kept here (single source of truth) so the public engine and the
+ * admin preview never drift out of sync — see index.css for the matching
+ * @import of each webfont.
+ */
+export const FONT_FAMILY_CSS: Record<FontFamily, string> = {
+  display: "'Bricolage Grotesque', ui-serif, Georgia, serif",
+  classic: 'Georgia, serif',
+  rounded: "'Inter', sans-serif",
+  modern: "'Poppins', sans-serif",
+  elegant: "'Playfair Display', ui-serif, Georgia, serif",
+  playful: "'Fredoka', sans-serif",
+}
+
+export function getFontFamilyCss(font: FontFamily): string {
+  return FONT_FAMILY_CSS[font] ?? FONT_FAMILY_CSS.display
+}
+
+/**
+ * Derive accessible neutrals from the brand colors.
+ *
+ * `target` lets a caller scope these CSS vars to a specific element instead
+ * of the document root — critical for the admin's ThemeEditor/ScreensTab
+ * preview, which renders this same engine to demo a campaign's (possibly
+ * dark-mode) theme. Writing to `document.documentElement` there would leak
+ * into the admin's own `--page`/`--ink` vars (see index.css's `body` rule)
+ * and flip the ENTIRE admin panel light/dark just from toggling a preview.
+ * Defaults to the document root, which is what the real public site wants.
+ */
+export function applyCampaignTheme(campaign: Campaign, target?: HTMLElement) {
   const theme = campaign.theme
   const brand = campaign.brand.colors
 
-  const root = document.documentElement
+  const root = target ?? document.documentElement
   root.style.setProperty('--brand-primary', theme.primary || brand.primary)
   root.style.setProperty('--brand-secondary', theme.secondary || brand.secondary)
   root.style.setProperty('--brand-accent', theme.accent || brand.accent)
@@ -51,16 +80,58 @@ export function applyCampaignTheme(campaign: Campaign) {
   root.style.setProperty('--field', theme.darkMode ? '#17181C' : '#ffffff')
 
   // Typography
-  const fontFamily =
-    theme.font === 'classic'
-      ? 'Georgia, serif'
-      : theme.font === 'rounded'
-        ? "'Inter', sans-serif"
-        : "'Bricolage Grotesque', ui-serif, Georgia, serif"
-  root.style.setProperty('--font-display', fontFamily)
+  root.style.setProperty('--font-display', getFontFamilyCss(theme.font))
 
   // Dynamic radius + spacing for the whole app
   root.style.setProperty('--radius', `${theme.radius}px`)
+
+  // Buttons — Theme editor's "Buttons" panel (buttonStyle: solid/outline/soft,
+  // buttonSize: sm/md/lg) previously only drove the admin's own preview
+  // swatches; the public site's PrimaryButton (ui.tsx) never read either
+  // setting and always rendered a hardcoded solid CTA. Compute the resolved
+  // look here — same single-source-of-truth pattern as the colors above —
+  // and expose it as --btn-* vars so PrimaryButton just consumes them.
+  const primaryColor = theme.primary || brand.primary
+  const accentColor = theme.accent || brand.accent
+
+  const BUTTON_SIZES: Record<typeof theme.buttonSize, { py: string; px: string; font: string }> = {
+    sm: { py: '0.65rem', px: '1.25rem', font: '13px' },
+    md: { py: '0.875rem', px: '1.75rem', font: '15px' },
+    lg: { py: '1.125rem', px: '2.25rem', font: '17px' },
+  }
+  const size = BUTTON_SIZES[theme.buttonSize] ?? BUTTON_SIZES.md
+  root.style.setProperty('--btn-py', size.py)
+  root.style.setProperty('--btn-px', size.px)
+  root.style.setProperty('--btn-font', size.font)
+
+  if (theme.buttonStyle === 'outline') {
+    root.style.setProperty('--btn-bg', 'transparent')
+    root.style.setProperty('--btn-color', primaryColor)
+    root.style.setProperty('--btn-border', `1.5px solid ${primaryColor}`)
+    root.style.setProperty('--btn-shadow', 'none')
+    root.style.setProperty('--btn-shadow-hover', `0 6px 16px -8px color-mix(in srgb, ${primaryColor} 35%, transparent)`)
+  } else if (theme.buttonStyle === 'soft') {
+    root.style.setProperty('--btn-bg', `color-mix(in srgb, ${accentColor} 18%, transparent)`)
+    root.style.setProperty('--btn-color', primaryColor)
+    root.style.setProperty('--btn-border', 'none')
+    root.style.setProperty('--btn-shadow', 'none')
+    root.style.setProperty('--btn-shadow-hover', `0 6px 16px -8px color-mix(in srgb, ${primaryColor} 30%, transparent)`)
+  } else {
+    root.style.setProperty(
+      '--btn-bg',
+      `linear-gradient(155deg, color-mix(in srgb, ${primaryColor} 85%, white 15%), ${primaryColor})`,
+    )
+    root.style.setProperty('--btn-color', '#fff')
+    root.style.setProperty('--btn-border', 'none')
+    root.style.setProperty(
+      '--btn-shadow',
+      `0 4px 0 0 color-mix(in srgb, ${primaryColor} 70%, black), 0 14px 28px -10px color-mix(in srgb, ${primaryColor} 48%, transparent), inset 0 1px 0 rgba(255,255,255,0.3)`,
+    )
+    root.style.setProperty(
+      '--btn-shadow-hover',
+      `0 4px 0 0 color-mix(in srgb, ${primaryColor} 70%, black), 0 18px 36px -10px color-mix(in srgb, ${primaryColor} 60%, transparent)`,
+    )
+  }
 }
 
 const DEFAULT_TITLE = 'Marjane Campaign Studio'
@@ -109,7 +180,12 @@ export interface BrandView {
   id: string
   name: string
   logoUrl?: string
+  /** See CampaignTheme.showBrandName — optional, defaults to `true`. */
+  showBrandName?: boolean
   heroImageUrl?: string
+  /** Extra partner/brand logos (Theme editor → Images → "Brand images"),
+   * shown as a small strip under the header. Empty when none uploaded. */
+  brandImages?: string[]
   productLine: string
   packshot: string
   colors: BrandColors
@@ -117,6 +193,10 @@ export interface BrandView {
   prizes: number[]
   /** Odds of landing each `prizes[i]`, in %, same index/length as `prizes`. */
   probabilities: number[]
+  /** The tombola rules PDF — see CampaignTheme.rulesUrl. Empty when none has
+   * been uploaded yet (FormScreen hides the "consult the rules" link then,
+   * instead of pointing at a file that no longer exists). */
+  rulesUrl?: string
 }
 
 /**
@@ -152,7 +232,9 @@ export function campaignToBrand(campaign: Campaign): BrandView {
     id: campaign.slug,
     name: campaign.brand.name || campaign.name,
     logoUrl: campaign.theme.logoUrl || campaign.brand.logoUrl,
+    showBrandName: campaign.theme.showBrandName ?? true,
     heroImageUrl: campaign.theme.heroImageUrl || undefined,
+    brandImages: campaign.theme.brandImages.filter(Boolean),
     productLine: campaign.brand.productLine,
     packshot: campaign.brand.packshot,
     colors: {
@@ -163,6 +245,7 @@ export function campaignToBrand(campaign: Campaign): BrandView {
     threshold,
     prizes: prizeValues.length > 0 ? prizeValues : [0],
     probabilities: prizeValues.length > 0 ? probabilities : [100],
+    rulesUrl: campaign.theme.rulesUrl || undefined,
   }
 }
 

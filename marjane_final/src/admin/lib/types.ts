@@ -16,7 +16,7 @@ export interface WebsiteTheme {
   primary: string
   secondary: string
   accent: string
-  font: 'display' | 'classic' | 'rounded'
+  font: 'display' | 'classic' | 'rounded' | 'modern' | 'elegant' | 'playful'
   radius: number // 0-24
   buttonStyle: 'solid' | 'outline' | 'soft'
   buttonSize: 'sm' | 'md' | 'lg'
@@ -30,6 +30,9 @@ export interface WebsiteTheme {
   faviconUrl: string
   heroImageUrl: string
   brandImages: string[]
+  rulesUrl: string
+  /** See CampaignTheme.showBrandName — optional, defaults to `true`. */
+  showBrandName?: boolean
 }
 
 export interface Website {

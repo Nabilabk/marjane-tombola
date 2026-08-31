@@ -13,6 +13,7 @@ import {
   User,
   Undo2,
   Redo2,
+  X,
 } from 'lucide-react'
 import { Dropdown, DropdownItem, DropdownLabel } from './ui/Dropdown'
 import { usePlatformStore } from '../lib/store'
@@ -44,6 +45,8 @@ export function Topbar({
   const allCampaigns = usePlatformStore((s) => s.campaigns)
   const allNotifications = usePlatformStore((s) => s.notifications)
   const markAllRead = usePlatformStore((s) => s.markAllNotificationsRead)
+  const deleteNotification = usePlatformStore((s) => s.deleteNotification)
+  const clearNotifications = usePlatformStore((s) => s.clearNotifications)
   const updateWebsite = usePlatformStore((s) => s.updateWebsite)
   const canUndo = usePlatformStore((s) => s.canUndo)
   const canRedo = usePlatformStore((s) => s.canRedo)
@@ -248,15 +251,28 @@ export function Topbar({
         >
           <div className="flex items-center justify-between px-4 py-2.5">
             <span className="text-[13px] font-semibold text-[var(--pf-ink)]">{t('topbar.notifications')}</span>
-            {unread > 0 && (
-              <button
-                type="button"
-                onClick={markAllRead.bind(null, siteId)}
-                className="text-[12px] font-medium text-[var(--pf-accent)] hover:underline"
-              >
-                {t('topbar.markAllRead')}
-              </button>
-            )}
+            <div className="flex items-center gap-3">
+              {unread > 0 && (
+                <button
+                  type="button"
+                  onClick={markAllRead.bind(null, siteId)}
+                  className="text-[12px] font-medium text-[var(--pf-accent)] hover:underline"
+                >
+                  {t('topbar.markAllRead')}
+                </button>
+              )}
+              {notifications.length > 0 && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (window.confirm(t('notifications.deleteAllConfirm'))) clearNotifications(siteId)
+                  }}
+                  className="text-[12px] font-medium text-[var(--pf-ink-faint)] hover:text-[var(--pf-danger)] hover:underline"
+                >
+                  {t('topbar.clearAll')}
+                </button>
+              )}
+            </div>
           </div>
           <div className="max-h-[320px] overflow-y-auto border-t border-[var(--pf-border)]">
             {notifications.length === 0 && (
@@ -268,7 +284,7 @@ export function Topbar({
               <div
                 key={n.id}
                 className={cn(
-                  'flex gap-3 border-b border-[var(--pf-border)] px-4 py-3 transition-colors last:border-0 hover:bg-[var(--pf-sunken)]/60',
+                  'group flex gap-3 border-b border-[var(--pf-border)] px-4 py-3 transition-colors last:border-0 hover:bg-[var(--pf-sunken)]/60',
                   !n.read && 'bg-[var(--pf-accent-soft)]/40',
                 )}
               >
@@ -284,13 +300,22 @@ export function Topbar({
                           : 'bg-[var(--pf-accent)]',
                   )}
                 />
-                <div className="min-w-0">
+                <div className="min-w-0 flex-1">
                   <div className="text-[12.5px] font-medium text-[var(--pf-ink)]">{n.title}</div>
                   <div className="mt-0.5 truncate text-[12px] text-[var(--pf-ink-muted)]">{n.detail}</div>
                   <div className="mt-0.5 font-mono text-[10.5px] text-[var(--pf-ink-faint)]">
                     {new Date(n.time).toLocaleDateString(adminLang === 'ar' ? 'ar-MA' : adminLang === 'en' ? 'en-US' : 'fr-FR', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}
                   </div>
                 </div>
+                <button
+                  type="button"
+                  onClick={() => deleteNotification(siteId, n.id)}
+                  className="flex h-6 w-6 shrink-0 items-center justify-center rounded-[var(--pf-radius-xs)] text-[var(--pf-ink-faint)] opacity-0 transition-opacity hover:bg-[var(--pf-danger-soft)] hover:text-[var(--pf-danger)] group-hover:opacity-100"
+                  aria-label={t('topbar.deleteNotification')}
+                  title={t('topbar.deleteNotification')}
+                >
+                  <X className="h-3.5 w-3.5" />
+                </button>
               </div>
             ))}
           </div>

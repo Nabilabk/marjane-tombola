@@ -173,6 +173,34 @@ def match_receipt_items(line_items: list[dict], articles: list[dict]) -> list[di
     return results
 
 
+def _evaluate_per_article(agg: dict[str, dict], articles: list[dict], min_matches: int) -> bool:
+    """Count how many of the selected articles individually satisfy their own
+    ruleType/threshold, then require at least min_matches of them.
+    min_matches=1 (the default) is the original OR-across-articles behavior;
+    a higher value means several distinct articles must each show up on the
+    same receipt before it qualifies."""
+    matched = 0
+    for a in articles:
+        v = agg.get(a["code"], {"quantity": 0, "spend": 0.0})
+        rule_type = a.get("ruleType", "quantity")
+        threshold = a.get("threshold", 1)
+        value = v["quantity"] if rule_type == "quantity" else v["spend"]
+        if value >= threshold:
+            matched += 1
+    return matched >= (min_matches or 1)
+
+
+def _evaluate_combined(agg: dict[str, dict], combined: dict | None) -> bool:
+    if not combined:
+        return True  # misconfigured -> fail open, don't block legitimate receipts
+    total_qty = sum(v["quantity"] for v in agg.values())
+    total_spend = sum(v["spend"] for v in agg.values())
+    threshold = combined["threshold"]
+    if combined["ruleType"] == "quantity":
+        return total_qty >= threshold
+    return total_spend >= threshold
+
+
 def evaluate_product_rules(line_items: list[dict], rules: dict) -> bool:
     """True = the receipt satisfies the campaign's configured product
     rules. Backward compatible: no articles configured => always True
@@ -184,30 +212,26 @@ def evaluate_product_rules(line_items: list[dict], rules: dict) -> bool:
     agg = match_line_items_to_articles(line_items, articles)
     mode = rules.get("mode", "per_article")
 
+    if mode == "both":
+        # An admin has layered a per-article rule AND an aggregate
+        # (quantity/spend) rule on top of each other — both must pass, not
+        # either/or, since "both" is meant to add an extra condition rather
+        # than offer a second way to qualify. `_evaluate_combined` fails
+        # OPEN (returns True) when `combined` is falsy — correct for
+        # mode="combined" alone (no rule configured => don't block), but
+        # wrong here: a "both"-mode record with no combinedRule (e.g.
+        # written before validation required one, or restored from an old
+        # backup) must not silently degrade into a per-article-only check —
+        # that's exactly the second, unintended way to qualify this mode
+        # exists to prevent.
+        combined_rule = rules.get("combinedRule")
+        if not combined_rule:
+            return False
+        return _evaluate_per_article(agg, articles, rules.get("minMatches") or 1) and _evaluate_combined(
+            agg, combined_rule
+        )
+
     if mode == "combined":
-        combined = rules.get("combinedRule")
-        if not combined:
-            return True  # misconfigured -> fail open, don't block legitimate receipts
-        total_qty = sum(v["quantity"] for v in agg.values())
-        total_spend = sum(v["spend"] for v in agg.values())
-        threshold = combined["threshold"]
-        if combined["ruleType"] == "quantity":
-            return total_qty >= threshold
-        return total_spend >= threshold
+        return _evaluate_combined(agg, rules.get("combinedRule"))
 
-    # per_article mode: count how many of the selected articles individually
-    # satisfy their own ruleType/threshold, then require at least minMatches
-    # of them. minMatches=1 (the default) is the original OR-across-articles
-    # behavior; a higher value means several distinct articles must each show
-    # up on the same receipt before it qualifies.
-    matched = 0
-    for a in articles:
-        v = agg.get(a["code"], {"quantity": 0, "spend": 0.0})
-        rule_type = a.get("ruleType", "quantity")
-        threshold = a.get("threshold", 1)
-        value = v["quantity"] if rule_type == "quantity" else v["spend"]
-        if value >= threshold:
-            matched += 1
-
-    min_matches = rules.get("minMatches") or 1
-    return matched >= min_matches
+    return _evaluate_per_article(agg, articles, rules.get("minMatches") or 1)

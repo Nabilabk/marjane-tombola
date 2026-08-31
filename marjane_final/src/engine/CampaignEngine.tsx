@@ -11,10 +11,11 @@
     campaign matching the slug.
 */
 
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
 import type { Campaign, GameId } from '../platform/types'
 import type { Lang } from '../tombola/i18n'
+import { isPastEndDate } from '../platform/schedule'
 import { campaignToBrand, applyCampaignTheme } from './theme'
 import { buildTranslations } from './translations'
 import CampaignHeader from '../tombola/CampaignHeader'
@@ -135,6 +136,10 @@ export default function CampaignEngine({
   const [lang, setLang] = useState<Lang>(() =>
     normalizeLang(initialLang ?? campaign.language),
   )
+  // Root of everything this engine renders. In preview (admin), theme vars
+  // and dir/lang get scoped to THIS element instead of the whole document —
+  // see the effects below and applyCampaignTheme's `target` param.
+  const rootRef = useRef<HTMLDivElement>(null)
 
   function normalizeLang(l: string): Lang {
     return l === 'ar' ? 'ar' : 'fr'
@@ -168,14 +173,16 @@ export default function CampaignEngine({
   // produce a "come back soon" message. Previews (admin clicking through
   // ThemeEditor/Pages) always render normally regardless — see isPreview
   // above. Mirrors backend/app.py's _lifecycle_block exactly.
-  const scheduledEndMs = campaign.schedule.endDate
-    ? new Date(`${campaign.schedule.endDate}T${campaign.schedule.endTime || '23:59'}:00`).getTime()
-    : null
   const isEnded =
     campaign.status === 'ended' ||
     campaign.status === 'archived' ||
-    (scheduledEndMs !== null && Date.now() > scheduledEndMs)
+    isPastEndDate(campaign.schedule.endDate, campaign.schedule.endTime)
   const isMaintenance = campaign.maintenanceMode && !isEnded
+  // Draft = never published — nothing has gone live yet, so a real visitor
+  // hitting the slug gets a blank page (not even the branded header), same
+  // as a domain with nothing deployed on it. Admin preview ignores this
+  // (isPreview) so editing a draft campaign still renders normally.
+  const isDraft = campaign.status === 'draft'
 
   const screen = stack[stack.length - 1]
   const anim = ANIMATION_PRESETS[campaign.theme.animationLevel] ?? ANIMATION_PRESETS.subtle
@@ -190,16 +197,33 @@ export default function CampaignEngine({
     return flow[i + 1] ?? 'result'
   }
 
-  // Apply theme CSS vars — the heartbeat of live re-skinning.
+  // Apply theme CSS vars — the heartbeat of live re-skinning. Skipped for a
+  // real visitor on a draft campaign: nothing renders below, and applying
+  // the brand's dark-mode page color here would still tint the otherwise-
+  // blank <body> (see index.css), undoing the point of showing nothing.
+  //
+  // In preview (admin ThemeEditor/ScreensTab), scope to this component's own
+  // root instead of the document — otherwise toggling a campaign's dark mode
+  // while previewing it would flip the WHOLE admin panel light/dark, since
+  // index.css's `body` reads these exact same --page/--ink vars.
   useEffect(() => {
-    applyCampaignTheme(campaign)
-  }, [campaign])
+    if (!isPreview && isDraft) return
+    applyCampaignTheme(campaign, isPreview ? rootRef.current ?? undefined : undefined)
+  }, [campaign, isPreview, isDraft])
 
-  // Reflect the campaign language + RTL.
+  // Reflect the campaign language + RTL. Same scoping reasoning as above —
+  // a preview shouldn't flip the admin's own document dir/lang.
   useEffect(() => {
+    if (isPreview) {
+      if (rootRef.current) {
+        rootRef.current.dir = lang === 'ar' ? 'rtl' : 'ltr'
+        rootRef.current.lang = lang
+      }
+      return
+    }
     document.documentElement.dir = lang === 'ar' ? 'rtl' : 'ltr'
     document.documentElement.lang = lang
-  }, [lang])
+  }, [lang, isPreview])
 
   // Controlled navigation (admin page switcher).
   useEffect(() => {
@@ -267,6 +291,7 @@ export default function CampaignEngine({
             dict={translations}
             editable={editable}
             onEditText={onEditText}
+            rulesUrl={brand.rulesUrl}
             onSubmit={(data) => {
               const full = `${data.firstName} ${data.lastName}`.trim()
               setPhone(data.phone)
@@ -371,8 +396,27 @@ export default function CampaignEngine({
     }
   }
 
+  // Truly nothing — no header, no branding, no theme background. A draft
+  // isn't "coming soon", it's not deployed: this is what an unclaimed
+  // domain looks like, not a state a real visitor should be able to read
+  // anything into.
+  if (!isPreview && isDraft) return null
+
   return (
-    <div className={`flex min-h-screen flex-col ${className ?? ''}`}>
+    // bg-[color:var(--page)] + min-h-full (not min-h-screen/100vh) so this
+    // paints its OWN themed background over its full height — needed in the
+    // admin preview, where it sits inside DevicePreview's fixed-height,
+    // hardcoded-white device frame (see DevicePreview.tsx) rather than
+    // directly under <body>. Without this, toggling a campaign to dark mode
+    // left that white frame showing through instead of turning dark.
+    //
+    // text-[color:var(--ink)] does the same job for foreground text: form
+    // elements (<input>/<textarea>/<select>) get `color: inherit` from
+    // Tailwind's preflight, so without an explicit `color` set somewhere in
+    // this subtree they fall through past this scoped root to the ADMIN
+    // page's own (always-light) `--ink`, rendering near-black text on the
+    // dark-mode field background (`--field`) below — invisible while typing.
+    <div ref={rootRef} className={`flex min-h-full flex-col bg-[color:var(--page)] text-[color:var(--ink)] ${className ?? ''}`}>
       <CampaignHeader
         brand={brand}
         lang={lang}
@@ -389,12 +433,15 @@ export default function CampaignEngine({
         {campaign.theme.backgroundImageUrl && (
           <div
             aria-hidden="true"
-            className="pointer-events-none absolute inset-0 -z-20 bg-cover bg-center bg-fixed"
+            className="pointer-events-none absolute inset-0 -z-20 bg-cover bg-center"
             style={{ backgroundImage: `url(${campaign.theme.backgroundImageUrl})` }}
           >
             {/* Scrim in the page color so body text stays legible over any photo,
-                in both light and dark themes — the image reads as texture, not noise. */}
-            <div className="absolute inset-0" style={{ background: 'color-mix(in srgb, var(--page) 86%, transparent)' }} />
+                in both light and dark themes — the image reads as texture, not noise.
+                Kept below ~60% or the photo becomes imperceptible (screen content
+                itself sits on its own translucent InfoCard, so it doesn't rely on
+                this scrim for contrast). */}
+            <div className="absolute inset-0" style={{ background: 'color-mix(in srgb, var(--page) 55%, transparent)' }} />
           </div>
         )}
         <div className="tombola-ambient-bg" aria-hidden="true" />

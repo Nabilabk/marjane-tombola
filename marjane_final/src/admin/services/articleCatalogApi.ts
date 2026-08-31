@@ -44,11 +44,13 @@ export interface CombinedRule {
 }
 
 export interface ProductRules {
-  mode: 'per_article' | 'combined'
+  /** 'both' layers the per_article check AND the combinedRule check on top
+   * of each other — the receipt must satisfy BOTH to qualify, not either. */
+  mode: 'per_article' | 'combined' | 'both'
   articles: ArticleRule[]
   combinedRule: CombinedRule | null
-  /** per_article mode only: how many of `articles` must individually satisfy
-   * their own rule for the receipt to qualify. 1 = any one qualifies (OR). */
+  /** per_article/both modes only: how many of `articles` must individually
+   * satisfy their own rule for the receipt to qualify. 1 = any one qualifies (OR). */
   minMatches: number
 }
 

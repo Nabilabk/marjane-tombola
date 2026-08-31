@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react'
 import { useParams } from 'react-router-dom'
-import { usePlatformStore } from '../../lib/store'
+import { usePlatformStore, isRulesFolder } from '../../lib/store'
 import { useShallow } from 'zustand/react/shallow'
 import { SectionHeading, Badge, EmptyState } from '../../components/ui/Basics'
 import { Button } from '../../components/ui/Button'
@@ -10,6 +10,7 @@ import { Search, Upload, Folder, FolderOpen, Image as ImageIcon, Download, Trash
 import { cn } from '../../lib/cn'
 import type { Asset } from '../../lib/types'
 import { useAdminLang } from '../../lib/adminI18n'
+import { readFileAsDataUrl, readImageFile, validateImageFile } from '../../lib/image'
 
 // Underlying folder values stay English (they're stored on Asset.folder and
 // matched by equality) — only the on-screen label is translated.
@@ -22,20 +23,36 @@ const FOLDER_LABEL_KEY: Record<(typeof FOLDERS)[number], string> = {
   Documents: 'assets.folderDocuments',
 }
 
-const DEMO_ASSETS: Asset[] = [
-  { id: 'a1', websiteId: 'seed', name: 'marjane-logo.png', type: 'image', folder: 'Logos', sizeKb: 84, url: '', uploadedAt: new Date().toISOString() },
-  { id: 'a2', websiteId: 'seed', name: 'hero-ete.png', type: 'image', folder: 'Heroes', sizeKb: 320, url: '', uploadedAt: new Date().toISOString() },
-  { id: 'a3', websiteId: 'seed', name: 'bg-pattern.svg', type: 'icon', folder: 'Backgrounds', sizeKb: 12, url: '', uploadedAt: new Date().toISOString() },
-  { id: 'a4', websiteId: 'seed', name: 'reglement.pdf', type: 'document', folder: 'Documents', sizeKb: 1240, url: '', uploadedAt: new Date().toISOString() },
-  { id: 'a5', websiteId: 'seed', name: 'packshot-1.jpg', type: 'image', folder: 'Heroes', sizeKb: 512, url: '', uploadedAt: new Date().toISOString() },
-  { id: 'a6', websiteId: 'seed', name: 'icon-gift.svg', type: 'icon', folder: 'Icons', sizeKb: 4, url: '', uploadedAt: new Date().toISOString() },
-]
+// An asset whose id starts with 'theme-' isn't independently uploaded — it
+// mirrors whatever the Theme Editor (or Settings/Cards/Wheel/Scratch panels)
+// has set live as the logo/favicon/hero/brand image (see
+// admin/lib/store.ts's computeThemeAssets). Shown with a badge so it reads
+// as "what the site is using", not a random extra file.
+function isThemeMirroredAsset(a: Asset): boolean {
+  return a.id.startsWith('theme-')
+}
+
+// A real image (an actual upload — data: URL — or a plain http(s) link) gets
+// rendered for real so the tile shows exactly what's live on the site,
+// instead of a generic colored icon that looks the same whichever logo is
+// set. A demo placeholder value from MediaPicker (e.g. "logo", "#0C2340")
+// isn't a fetchable image, so it still falls back to the icon below.
+function isRenderableAssetImage(url: string): boolean {
+  return url.startsWith('data:image') || /^https?:\/\//.test(url)
+}
 
 function AssetThumb({ asset }: { asset: Asset }) {
   if (asset.type === 'document') {
     return (
       <div className="flex h-full w-full items-center justify-center bg-[var(--pf-warning-soft)]">
         <FileText className="h-6 w-6 text-[var(--pf-warning)]" />
+      </div>
+    )
+  }
+  if (asset.type === 'image' && asset.url && isRenderableAssetImage(asset.url)) {
+    return (
+      <div className="flex h-full w-full items-center justify-center bg-white">
+        <img src={asset.url} alt={asset.name} className="h-full w-full object-contain p-2" />
       </div>
     )
   }
@@ -61,25 +78,68 @@ export default function Assets() {
   const [folder, setFolder] = useState<string | null>(null)
   const [preview, setPreview] = useState<Asset | null>(null)
   const [dragActive, setDragActive] = useState(false)
+  const [uploadError, setUploadError] = useState<string | null>(null)
   const { t } = useAdminLang()
 
-  // The store seeds demo assets for the demo website; for safety, fall back
-  // to the local demo list only when the store has nothing at all.
-  const allAssets = useMemo(() => {
-    const seeded = assets.length > 0 ? assets : DEMO_ASSETS
-    return seeded
-  }, [assets])
+  const allAssets = assets
 
-  function handleUploadFile(file: File | undefined) {
+  const MAX_DOCUMENT_SIZE_MB = 10
+
+  async function handleUploadFile(file: File | undefined) {
     if (!file || !siteId) return
-    const guessedFolder = folder ?? (file.type.startsWith('image/') ? 'Heroes' : 'Documents')
-    addAsset(
-      siteId,
-      file.name,
-      guessedFolder,
-      file.type === 'application/pdf' ? 'document' : file.type.includes('svg') ? 'icon' : 'image',
-      Math.max(1, Math.round(file.size / 1024)),
-    )
+    setUploadError(null)
+    const isImage = file.type.startsWith('image/')
+    const isPdf = file.type === 'application/pdf'
+    // Only PNG/JPG/SVG/PDF are supported (see the dropzone's own
+    // fileTypesHint) — anything else used to fall through to the generic
+    // `isImage ? 'Heroes' : 'Documents'` guess below, which meant dropping
+    // an unrelated file (a .docx, .csv, anything) while on the "All" tab
+    // silently landed it in the single-slot "Documents" folder and replaced
+    // the site's live tombola règlement PDF with no confirmation.
+    if (!isImage && !isPdf) {
+      setUploadError(t('assets.unsupportedType'))
+      return
+    }
+    const type: Asset['type'] = isPdf ? 'document' : file.type.includes('svg') ? 'icon' : 'image'
+    const guessedFolder = folder ?? (isImage ? 'Heroes' : 'Documents')
+
+    try {
+      // Keep the actual file bytes so "Download" later has something real to
+      // hand back — images go through the same shrink-and-encode path as
+      // MediaPicker so they don't bloat storage; other files (PDFs, etc.)
+      // are read as-is.
+      let dataUrl: string
+      if (isImage) {
+        const validationError = validateImageFile(file)
+        if (validationError) {
+          setUploadError(validationError)
+          return
+        }
+        dataUrl = await readImageFile(file)
+      } else {
+        if (file.size > MAX_DOCUMENT_SIZE_MB * 1024 * 1024) {
+          setUploadError(`That file is too large — please pick one under ${MAX_DOCUMENT_SIZE_MB} MB.`)
+          return
+        }
+        dataUrl = await readFileAsDataUrl(file)
+      }
+      addAsset(siteId, file.name, guessedFolder, type, Math.max(1, Math.round(file.size / 1024)), dataUrl)
+    } catch (e) {
+      setUploadError(e instanceof Error ? e.message : t('mediaPicker.loadError'))
+    }
+  }
+
+  function downloadAsset(asset: Asset) {
+    if (!asset.url) {
+      alert(t('assets.noFileData'))
+      return
+    }
+    const link = document.createElement('a')
+    link.href = asset.url
+    link.download = asset.name
+    document.body.appendChild(link)
+    link.click()
+    document.body.removeChild(link)
   }
 
   // Without preventDefault, a dropped file falls through to the browser's
@@ -95,7 +155,7 @@ export default function Assets() {
   function onDrop(e: React.DragEvent) {
     e.preventDefault()
     setDragActive(false)
-    handleUploadFile(e.dataTransfer.files?.[0])
+    void handleUploadFile(e.dataTransfer.files?.[0])
   }
 
   const filtered = useMemo(
@@ -108,6 +168,17 @@ export default function Assets() {
     [allAssets, query, folder],
   )
 
+  // Deleting a theme-mirrored asset (the live logo/favicon/...) or the
+  // règlement PDF doesn't just remove a tile here — it clears the actual
+  // site setting (see admin/lib/store.ts's deleteAsset), so the confirm
+  // dialog says so instead of reading like an ordinary file deletion.
+  function confirmDeleteMessage(a: Asset): string {
+    const base = `${t('assets.deleteConfirmPrefix')} "${a.name}" ?`
+    if (isThemeMirroredAsset(a)) return `${base} ${t('assets.deleteInUseWarning')}`
+    if (isRulesFolder(a.folder)) return `${base} ${t('assets.deleteRulesWarning')}`
+    return base
+  }
+
   return (
     <div className="pf-fade-in">
       <SectionHeading
@@ -119,7 +190,10 @@ export default function Assets() {
             <Button variant="primary" icon={<Upload className="h-3.5 w-3.5" />} type="button" onClick={() => {}}>
               {t('assets.upload')}
             </Button>
-            <input type="file" className="hidden" onChange={(e) => handleUploadFile(e.target.files?.[0])} />
+            <input type="file" className="hidden" onChange={(e) => {
+              void handleUploadFile(e.target.files?.[0])
+              e.target.value = ''
+            }} />
           </label>
         }
       />
@@ -187,8 +261,23 @@ export default function Assets() {
                 {t('assets.fileTypesHint')}
               </span>
             </span>
-            <input type="file" className="hidden" onChange={(e) => handleUploadFile(e.target.files?.[0])} />
+            <input type="file" className="hidden" onChange={(e) => {
+              void handleUploadFile(e.target.files?.[0])
+              e.target.value = ''
+            }} />
           </label>
+
+          {folder === 'Documents' && (
+            <p className="mb-4 rounded-[var(--pf-radius-sm)] border border-[var(--pf-border)] bg-[var(--pf-sunken)]/60 px-3 py-2 text-[12px] text-[var(--pf-ink-muted)]">
+              {t('assets.documentsHint')}
+            </p>
+          )}
+
+          {uploadError && (
+            <p className="mb-4 rounded-[var(--pf-radius-sm)] border border-[var(--pf-danger)]/30 bg-[var(--pf-danger-soft)] px-3 py-2 text-[12.5px] text-[var(--pf-danger)]">
+              {uploadError}
+            </p>
+          )}
 
           {filtered.length === 0 ? (
             <EmptyState title={t('assets.notFoundTitle')} description={t('assets.notFoundDesc')} />
@@ -210,15 +299,29 @@ export default function Assets() {
                 >
                   <div className="relative h-24">
                     <AssetThumb asset={a} />
-<div className="absolute inset-0 flex items-center justify-center gap-2 bg-[#17181c]/50 opacity-0 transition-opacity group-hover:opacity-100">
-                      <span className="flex h-7 w-7 items-center justify-center rounded-full bg-white text-[var(--pf-ink)]">
-                        <Download className="h-3.5 w-3.5" />
+                    {isThemeMirroredAsset(a) && (
+                      <span className="absolute left-1.5 top-1.5 rounded-full bg-[var(--pf-accent)] px-1.5 py-0.5 text-[9.5px] font-semibold uppercase tracking-[0.04em] text-white shadow-[var(--pf-shadow-xs)]">
+                        {t('assets.inUse')}
                       </span>
+                    )}
+<div className="absolute inset-0 flex items-center justify-center gap-2 bg-[#17181c]/50 opacity-0 transition-opacity group-hover:opacity-100">
                       <button
                         type="button"
                         onClick={(e) => {
                           e.stopPropagation()
-                          if (confirm(`${t('assets.deleteConfirmPrefix')} "${a.name}" ?`)) {
+                          downloadAsset(a)
+                        }}
+                        className="flex h-7 w-7 items-center justify-center rounded-full bg-white text-[var(--pf-ink)]"
+                        aria-label={t('assets.download')}
+                        title={t('assets.download')}
+                      >
+                        <Download className="h-3.5 w-3.5" />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          if (confirm(confirmDeleteMessage(a))) {
                             deleteAsset(siteId!, a.id)
                             if (preview?.id === a.id) setPreview(null)
                           }
@@ -270,12 +373,14 @@ export default function Assets() {
               ))}
             </div>
 <div className="mt-5 flex justify-end gap-2">
-              <Button variant="secondary" icon={<Download className="h-3.5 w-3.5" />}>{t('assets.download')}</Button>
+              <Button variant="secondary" icon={<Download className="h-3.5 w-3.5" />} onClick={() => downloadAsset(preview)}>
+                {t('assets.download')}
+              </Button>
               <Button
                 variant="danger"
                 icon={<Trash2 className="h-3.5 w-3.5" />}
                 onClick={() => {
-                  if (confirm(`${t('assets.deleteConfirmPrefix')} "${preview.name}" ?`)) {
+                  if (confirm(confirmDeleteMessage(preview))) {
                     deleteAsset(siteId!, preview.id)
                     setPreview(null)
                   }

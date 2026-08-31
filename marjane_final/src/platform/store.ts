@@ -57,6 +57,82 @@ function iso(daysAgo: number, hour = 10) {
   return d.toISOString()
 }
 
+// Notifications persist to their own localStorage key (separate from
+// `STORAGE_KEY`'s campaigns) so read/unread state and history survive a
+// reload — same pattern as the campaign repository, just simpler since
+// there's no per-record CRUD, only append + mark-read.
+const NOTIF_STORAGE_KEY = 'campaignhub.notifications.v1'
+const MAX_NOTIFICATIONS = 300
+
+function readNotifications(): Notification[] {
+  if (typeof window === 'undefined') return []
+  try {
+    const raw = localStorage.getItem(NOTIF_STORAGE_KEY)
+    if (!raw) return []
+    const parsed = JSON.parse(raw) as Notification[]
+    return Array.isArray(parsed) ? parsed : []
+  } catch {
+    return []
+  }
+}
+
+function writeNotifications(notifications: Notification[]): void {
+  if (typeof window === 'undefined') return
+  try {
+    localStorage.setItem(NOTIF_STORAGE_KEY, JSON.stringify(notifications))
+  } catch {
+    /* storage full/disabled — keep in-memory only for this session */
+  }
+}
+
+// Ids of every notification `addNotification` has ever accepted, kept
+// separately from `notifications` itself and never pruned by delete/clear.
+// The poll loop (admin/lib/useNotificationFeed.ts) derives stable ids from
+// source data (`participant-{id}`, `winner-{id}`, ...) and re-offers the
+// same event on every tick — checking only the live `notifications` array
+// for "already have this" meant deleting (or clearing) a notification made
+// it reappear on the very next poll, since the source row was still there.
+// This list is what makes "delete" actually stick.
+const SEEN_STORAGE_KEY = 'campaignhub.notifications.seen.v1'
+const MAX_SEEN_IDS = MAX_NOTIFICATIONS * 4
+
+function readSeenIds(): string[] {
+  if (typeof window === 'undefined') return []
+  try {
+    const raw = localStorage.getItem(SEEN_STORAGE_KEY)
+    if (!raw) return []
+    const parsed = JSON.parse(raw) as string[]
+    return Array.isArray(parsed) ? parsed : []
+  } catch {
+    return []
+  }
+}
+
+function writeSeenIds(ids: string[]): void {
+  if (typeof window === 'undefined') return
+  try {
+    localStorage.setItem(SEEN_STORAGE_KEY, JSON.stringify(ids))
+  } catch {
+    /* storage full/disabled — keep in-memory only for this session */
+  }
+}
+
+// In-memory mirror of the seen-ids list so `addNotification` (called once
+// per fetched row, every poll tick) doesn't re-read + re-parse localStorage
+// each time. Lazily seeded on first use rather than at module load so tests
+// that stub `localStorage` after import still work.
+let seenIdsCache: string[] | null = null
+function markSeen(id: string): void {
+  if (seenIdsCache === null) seenIdsCache = readSeenIds()
+  if (seenIdsCache.includes(id)) return
+  seenIdsCache = [id, ...seenIdsCache].slice(0, MAX_SEEN_IDS)
+  writeSeenIds(seenIdsCache)
+}
+function hasSeen(id: string): boolean {
+  if (seenIdsCache === null) seenIdsCache = readSeenIds()
+  return seenIdsCache.includes(id)
+}
+
 interface PlatformState {
   campaigns: Campaign[]
   participants: Participant[]
@@ -104,7 +180,19 @@ interface PlatformState {
   ticketsFor: (campaignId: string) => Ticket[]
   notificationsFor: (campaignId: string) => Notification[]
   activityFor: (campaignId: string) => ActivityItem[]
+  /** Appends a notification — idempotent by `id`, so a caller (e.g. the
+   * admin's polling notification feed, see admin/lib/useNotificationFeed.ts)
+   * can call this on every poll tick for the same event without ever
+   * duplicating it. No-ops if that `id` has ever been accepted before, even
+   * if it was since deleted/cleared — otherwise a dismissed notification
+   * whose source row the backend still returns would just come back on the
+   * next poll. */
+  addNotification: (input: Omit<Notification, 'read'>) => void
   markAllNotificationsRead: (campaignId: string) => void
+  /** Removes a single notification (swipe-to-delete in the admin UI). */
+  deleteNotification: (id: string) => void
+  /** Clears every notification for a campaign ("delete all"). */
+  clearNotifications: (campaignId: string) => void
 }
 
 // --------------------------------------------------------------------------
@@ -167,6 +255,7 @@ function backfillLifecycleFields() {
   for (const c of repository.list()) {
     const patch: Partial<Campaign> = {}
     if (typeof c.maintenanceMode !== 'boolean') patch.maintenanceMode = false
+    if (typeof c.theme.rulesUrl !== 'string') patch.theme = { ...c.theme, rulesUrl: '' }
 
     const existingKeys = new Set(c.translations.map((tr) => tr.key))
     const missingKeys = LIFECYCLE_TRANSLATION_KEYS.filter((k) => !existingKeys.has(k))
@@ -195,8 +284,8 @@ function backfillLifecycleFields() {
 function subscribeToCrossTabChanges(set: (partial: Partial<PlatformState>) => void) {
   if (typeof window === 'undefined') return
   window.addEventListener('storage', (event) => {
-    if (event.key !== STORAGE_KEY) return
-    set({ campaigns: repository.list() })
+    if (event.key === STORAGE_KEY) set({ campaigns: repository.list() })
+    else if (event.key === NOTIF_STORAGE_KEY) set({ notifications: readNotifications() })
   })
 }
 
@@ -209,7 +298,7 @@ export const usePlatformStore = create<PlatformState>()((set, get, _store) => {
     campaigns: repository.list(),
     participants: [],
     tickets: [],
-    notifications: [],
+    notifications: readNotifications(),
     activity: [],
 
     canUndo: false,
@@ -256,9 +345,11 @@ export const usePlatformStore = create<PlatformState>()((set, get, _store) => {
         darkMode: false,
         backgroundImageUrl: '',
         logoUrl: '',
+        showBrandName: true,
         faviconUrl: '',
         heroImageUrl: '',
         brandImages: [],
+        rulesUrl: '',
         ...input.theme,
       }
       const campaign: Campaign = {
@@ -396,15 +487,19 @@ export const usePlatformStore = create<PlatformState>()((set, get, _store) => {
     deleteCampaign: (id) => {
       pushHistory(get().campaigns)
       repository.delete(id)
-      set((s) => ({
-        campaigns: s.campaigns.filter((c) => c.id !== id),
-        participants: s.participants.filter((p) => p.campaignId !== id),
-        tickets: s.tickets.filter((t) => t.campaignId !== id),
-        notifications: s.notifications.filter((n) => n.campaignId !== id),
-        activity: s.activity.filter((a) => a.campaignId !== id),
-        canUndo: true,
-        canRedo: false,
-      }))
+      set((s) => {
+        const notifications = s.notifications.filter((n) => n.campaignId !== id)
+        writeNotifications(notifications)
+        return {
+          campaigns: s.campaigns.filter((c) => c.id !== id),
+          participants: s.participants.filter((p) => p.campaignId !== id),
+          tickets: s.tickets.filter((t) => t.campaignId !== id),
+          notifications,
+          activity: s.activity.filter((a) => a.campaignId !== id),
+          canUndo: true,
+          canRedo: false,
+        }
+      })
     },
 
     duplicateCampaign: (id) => {
@@ -429,12 +524,43 @@ export const usePlatformStore = create<PlatformState>()((set, get, _store) => {
     ticketsFor: (campaignId) => get().tickets.filter((t) => t.campaignId === campaignId),
     notificationsFor: (campaignId) => get().notifications.filter((n) => n.campaignId === campaignId),
     activityFor: (campaignId) => get().activity.filter((a) => a.campaignId === campaignId),
+    addNotification: (input) => {
+      // Installs that already had notifications before `seenIds` existed
+      // won't have those ids recorded yet — treat "already in the live
+      // list" as seen too so this backfills instead of inserting a second
+      // copy of the same id.
+      const alreadyPresent = get().notifications.some((n) => n.id === input.id)
+      if (hasSeen(input.id) || alreadyPresent) {
+        markSeen(input.id)
+        return
+      }
+      markSeen(input.id)
+      set((s) => {
+        const notifications = [{ ...input, read: false }, ...s.notifications].slice(0, MAX_NOTIFICATIONS)
+        writeNotifications(notifications)
+        return { notifications }
+      })
+    },
     markAllNotificationsRead: (campaignId) =>
-      set((s) => ({
-        notifications: s.notifications.map((n) =>
+      set((s) => {
+        const notifications = s.notifications.map((n) =>
           n.campaignId === campaignId ? { ...n, read: true } : n,
-        ),
-      })),
+        )
+        writeNotifications(notifications)
+        return { notifications }
+      }),
+    deleteNotification: (id) =>
+      set((s) => {
+        const notifications = s.notifications.filter((n) => n.id !== id)
+        writeNotifications(notifications)
+        return { notifications }
+      }),
+    clearNotifications: (campaignId) =>
+      set((s) => {
+        const notifications = s.notifications.filter((n) => n.campaignId !== campaignId)
+        writeNotifications(notifications)
+        return { notifications }
+      }),
   }
 })
 

@@ -13,7 +13,9 @@ export type Brand = {
   id: string
   name: string
   logoUrl?: string // optional brand logo image; falls back to monogram if absent
+  showBrandName?: boolean // print the brand name as text next to the logo badge; defaults to true — turn off when the logo image already contains the wordmark
   heroImageUrl?: string // optional header banner photo; falls back to the flat brand-primary background if absent
+  brandImages?: string[] // optional extra partner/brand logos, shown as a strip under the header
   productLine: string
   packshot: string
   colors: {

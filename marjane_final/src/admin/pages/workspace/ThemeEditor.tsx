@@ -7,8 +7,10 @@ import CampaignEngine, { FLOWS, normalizeGameId, type Screen } from '../../../en
 import { ColorPicker } from '../../components/ui/ColorPicker'
 import { MediaPicker } from '../../components/ui/MediaPicker'
 import { Select, Field } from '../../components/ui/Field'
+import { Toggle } from '../../components/ui/Toggle'
 import { cn } from '../../lib/cn'
 import { useAdminLang } from '../../lib/adminI18n'
+import { getFontFamilyCss } from '../../../engine/theme'
 import {
   Palette,
   Type,
@@ -18,7 +20,6 @@ import {
   Sparkles,
   Moon,
   Monitor,
-  TypeIcon,
 } from 'lucide-react'
 
 type Category = 'colors' | 'typography' | 'buttons' | 'layout' | 'images' | 'animations'
@@ -192,20 +193,31 @@ export default function ThemeEditor() {
                 <option value="display">{t('settings.fontDisplay')}</option>
                 <option value="classic">{t('settings.fontClassic')}</option>
                 <option value="rounded">{t('settings.fontRounded')}</option>
+                <option value="modern">{t('settings.fontModern')}</option>
+                <option value="elegant">{t('settings.fontElegant')}</option>
+                <option value="playful">{t('settings.fontPlayful')}</option>
               </Select>
             </Field>
             <div className="rounded-[var(--pf-radius-sm)] border border-[var(--pf-border)] p-4">
               <div className="text-[10.5px] font-medium uppercase tracking-[0.06em] text-[var(--pf-ink-faint)]">{t('themeEditor.preview')}</div>
-              <div className="mt-2 text-[18px] font-bold" style={{ fontFamily: theme.font === 'display' ? 'Bricolage Grotesque, serif' : theme.font === 'classic' ? 'Georgia, serif' : 'Inter, sans-serif' }}>
+              <div className="mt-2 text-[18px] font-bold" style={{ fontFamily: getFontFamilyCss(theme.font) }}>
                 La Grande Tombola
               </div>
-              <p className="mt-1 text-[12px] text-[var(--pf-ink-muted)]" style={{ fontFamily: theme.font === 'display' ? 'Bricolage Grotesque, serif' : 'Inter, sans-serif' }}>
+              <p className="mt-1 text-[12px] text-[var(--pf-ink-muted)]" style={{ fontFamily: getFontFamilyCss(theme.font) }}>
                 Achetez, scannez, gagnez.
               </p>
             </div>
             <p className="text-[11.5px] leading-relaxed text-[var(--pf-ink-faint)]">
               {t('themeEditor.typographyHint')}
             </p>
+            <div className="rounded-[var(--pf-radius-sm)] border border-[var(--pf-border)] p-4">
+              <Toggle
+                checked={theme.showBrandName ?? true}
+                onChange={(v) => set({ showBrandName: v })}
+                label={t('themeEditor.showBrandName')}
+                description={t('themeEditor.showBrandNameHint')}
+              />
+            </div>
           </div>
         )}
 
@@ -301,29 +313,50 @@ export default function ThemeEditor() {
             <MediaPicker label={t('settings.logoUrl')} value={theme.logoUrl} onChange={(v) => set({ logoUrl: v })} />
             <MediaPicker label={t('themeEditor.backgroundImage')} value={theme.backgroundImageUrl} onChange={(v) => set({ backgroundImageUrl: v })} />
             <MediaPicker label={t('themeEditor.heroImage')} value={theme.heroImageUrl} onChange={(v) => set({ heroImageUrl: v })} />
-            <MediaPicker label={t('themeEditor.favicon')} value={theme.faviconUrl} onChange={(v) => set({ faviconUrl: v })} />
+            <div>
+              <MediaPicker label={t('themeEditor.favicon')} value={theme.faviconUrl} onChange={(v) => set({ faviconUrl: v })} />
+              {/* Mock browser tab — the favicon never touches THIS admin
+                  tab's own icon (see engine/theme.ts's applyPublicSiteChrome),
+                  so without this the field looks like it does nothing. Gives
+                  immediate visual confirmation of what got picked. */}
+              <div className="mt-2 inline-flex max-w-full items-center gap-1.5 rounded-t-[8px] border border-b-0 border-[var(--pf-border-strong)] bg-white px-2.5 py-1.5 shadow-[var(--pf-shadow-xs)]">
+                <span className="flex h-3.5 w-3.5 shrink-0 items-center justify-center overflow-hidden rounded-[3px] bg-[var(--pf-sunken)]">
+                  {theme.faviconUrl ? (
+                    <img src={theme.faviconUrl} alt="" className="h-full w-full object-cover" />
+                  ) : (
+                    <ImageIcon className="h-2.5 w-2.5 text-[var(--pf-ink-faint)]" />
+                  )}
+                </span>
+                <span className="max-w-[160px] truncate text-[11px] text-[var(--pf-ink-muted)]">{website.name}</span>
+              </div>
+              <p className="mt-1.5 text-[11px] leading-relaxed text-[var(--pf-ink-faint)]">{t('themeEditor.faviconHint')}</p>
+            </div>
             <div>
               <span className="mb-1.5 block text-[12.5px] font-medium text-[var(--pf-ink)]">{t('themeEditor.brandImages')}</span>
               <div className="grid grid-cols-4 gap-2">
                 {theme.brandImages.map((img, i) => (
-                  <button
+                  <MediaPicker
                     key={i}
-                    type="button"
-                    onClick={() => set({ brandImages: theme.brandImages.filter((_, idx) => idx !== i) })}
-                    className="flex h-14 items-center justify-center rounded-[var(--pf-radius-sm)] border border-[var(--pf-border)] bg-[var(--pf-sunken)] text-[18px] transition-colors hover:border-[var(--pf-danger)]"
-                    title={`${t('common.remove')} ${img}`}
-                  >
-                    {img}
-                  </button>
+                    compact
+                    value={img}
+                    onChange={(v) =>
+                      set({
+                        brandImages: v
+                          ? theme.brandImages.map((existing, idx) => (idx === i ? v : existing))
+                          : theme.brandImages.filter((_, idx) => idx !== i),
+                      })
+                    }
+                  />
                 ))}
-                <button
-                  type="button"
-                  onClick={() => set({ brandImages: [...theme.brandImages, `brand-${theme.brandImages.length + 1}`] })}
-                  className="flex h-14 items-center justify-center rounded-[var(--pf-radius-sm)] border border-dashed border-[var(--pf-border-strong)] text-[var(--pf-ink-faint)] transition-colors hover:border-[var(--pf-accent)] hover:text-[var(--pf-accent)]"
-                >
-                  <TypeIcon className="h-4 w-4" />
-                </button>
+                <MediaPicker
+                  compact
+                  value=""
+                  onChange={(v) => {
+                    if (v) set({ brandImages: [...theme.brandImages, v] })
+                  }}
+                />
               </div>
+              <p className="mt-1.5 text-[11px] leading-relaxed text-[var(--pf-ink-faint)]">{t('themeEditor.brandImagesHint')}</p>
             </div>
           </div>
         )}

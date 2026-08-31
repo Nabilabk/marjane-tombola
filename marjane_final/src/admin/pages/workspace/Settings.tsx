@@ -7,8 +7,9 @@ import { Field, Input, Select } from '../../components/ui/Field'
 import { Tabs } from '../../components/ui/Tabs'
 import { Toggle } from '../../components/ui/Toggle'
 import { Dialog } from '../../components/ui/Dialog'
-import { Download, Upload, Trash2, KeyRound, Copy, Check, ShieldCheck, RefreshCw } from 'lucide-react'
+import { Download, Upload, Trash2, KeyRound, ShieldCheck } from 'lucide-react'
 import { useAdminLang } from '../../lib/adminI18n'
+import { getNotifPrefs, setNotifPref, type NotifKey } from '../../lib/notificationPrefs'
 
 export default function Settings() {
   const { siteId } = useParams()
@@ -25,12 +26,11 @@ export default function Settings() {
     { id: 'general', label: t('settings.tabGeneral') },
     { id: 'security', label: t('settings.tabSecurity') },
     { id: 'brand', label: t('settings.tabBrand') },
-    { id: 'api', label: t('settings.tabApi') },
     { id: 'notifications', label: t('settings.tabNotifications') },
     { id: 'backup', label: t('settings.tabBackup') },
   ]
 
-  const NOTIF_ITEMS = [
+  const NOTIF_ITEMS: { key: NotifKey; label: string; desc: string }[] = [
     { key: 'newParticipant', label: t('settings.notifNewParticipant'), desc: t('settings.notifNewParticipantDesc') },
     { key: 'newWinner', label: t('settings.notifNewWinner'), desc: t('settings.notifNewWinnerDesc') },
     { key: 'invalidTicket', label: t('settings.notifInvalidTicket'), desc: t('settings.notifInvalidTicketDesc') },
@@ -39,10 +39,10 @@ export default function Settings() {
   ]
 
   const [tab, setTab] = useState('general')
+  const [notifPrefs, setNotifPrefs] = useState(() => getNotifPrefs(website.id))
   const [name, setName] = useState(website.name)
   const [domain, setDomain] = useState(website.domain)
   const [deleteOpen, setDeleteOpen] = useState(false)
-  const [copied, setCopied] = useState(false)
   const [startDate, setStartDate] = useState(website.schedule.startDate)
   const [startTime, setStartTime] = useState(website.schedule.startTime)
   const [endDate, setEndDate] = useState(website.schedule.endDate)
@@ -196,45 +196,11 @@ export default function Settings() {
                   <option value="display">{t('settings.fontDisplay')}</option>
                   <option value="classic">{t('settings.fontClassic')}</option>
                   <option value="rounded">{t('settings.fontRounded')}</option>
+                  <option value="modern">{t('settings.fontModern')}</option>
+                  <option value="elegant">{t('settings.fontElegant')}</option>
+                  <option value="playful">{t('settings.fontPlayful')}</option>
                 </Select>
               </Field>
-            </div>
-          </Card>
-        )}
-
-        {tab === 'api' && (
-          <Card className="p-6">
-            <div className="mb-5 text-[14px] font-semibold text-[var(--pf-ink)]">{t('settings.apiKeys')}</div>
-            <p className="mb-4 text-[12.5px] text-[var(--pf-ink-muted)]">
-              {t('settings.apiKeysDesc')}
-            </p>
-            <div className="space-y-3">
-              <div className="flex items-center justify-between rounded-[var(--pf-radius-sm)] border border-[var(--pf-border)] p-4">
-                <div>
-                  <div className="font-mono text-[13px] text-[var(--pf-ink)]">sk_live_••••••••••••••••</div>
-                  <div className="mt-0.5 text-[11.5px] text-[var(--pf-ink-faint)]">{t('settings.liveKey')}</div>
-                </div>
-                <Button
-                  variant="secondary"
-                  size="sm"
-                  icon={copied ? <Check className="h-3.5 w-3.5 text-[var(--pf-success)]" /> : <Copy className="h-3.5 w-3.5" />}
-                  onClick={() => {
-                    setCopied(true)
-                    setTimeout(() => setCopied(false), 1600)
-                  }}
-                >
-                  {copied ? t('settings.copied') : t('settings.copy')}
-                </Button>
-              </div>
-              <div className="flex items-center justify-between rounded-[var(--pf-radius-sm)] border border-[var(--pf-border)] p-4">
-                <div>
-                  <div className="font-mono text-[13px] text-[var(--pf-ink)]">pk_test_••••••••••••••••</div>
-                  <div className="mt-0.5 text-[11.5px] text-[var(--pf-ink-faint)]">{t('settings.testKey')}</div>
-                </div>
-                <Button variant="secondary" size="sm" icon={<RefreshCw className="h-3.5 w-3.5" />}>
-                  {t('settings.rotate')}
-                </Button>
-              </div>
             </div>
           </Card>
         )}
@@ -243,13 +209,16 @@ export default function Settings() {
           <Card className="p-6">
             <div className="mb-5 text-[14px] font-semibold text-[var(--pf-ink)]">{t('settings.notifPrefs')}</div>
             <div className="space-y-3">
-              {NOTIF_ITEMS.map((item, i) => (
+              {NOTIF_ITEMS.map((item) => (
                 <div key={item.key} className="flex items-center justify-between rounded-[var(--pf-radius-sm)] border border-[var(--pf-border)] p-4">
                   <div>
                     <div className="text-[13px] font-semibold text-[var(--pf-ink)]">{item.label}</div>
                     <div className="mt-0.5 text-[12px] text-[var(--pf-ink-muted)]">{item.desc}</div>
                   </div>
-                  <Toggle checked={i < 3} onChange={() => {}} />
+                  <Toggle
+                    checked={notifPrefs[item.key]}
+                    onChange={(v) => setNotifPrefs(setNotifPref(website.id, item.key, v))}
+                  />
                 </div>
               ))}
             </div>

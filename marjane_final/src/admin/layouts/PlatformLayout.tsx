@@ -5,11 +5,16 @@ import { Input } from '../components/ui/Field'
 import { Dropdown, DropdownItem, DropdownLabel } from '../components/ui/Dropdown'
 import { getSession, logout } from '../lib/auth'
 import { useAdminLang } from '../lib/adminI18n'
+import { usePlatformStore } from '../lib/store'
 
 export function PlatformLayout({ children }: { children: ReactNode }) {
   const navigate = useNavigate()
   const session = getSession()
   const { t } = useAdminLang()
+  // Real unread count across every website — only reflects sites this
+  // browser has actually opened (see WorkspaceLayout's useNotificationFeed,
+  // which is what generates notifications in the first place).
+  const unread = usePlatformStore((s) => s.notifications.filter((n) => !n.read).length)
   const initials = (session?.name ?? 'A')
     .split(' ')
     .map((w) => w[0])
@@ -56,9 +61,11 @@ className="relative flex h-8 w-8 items-center justify-center rounded-[var(--pf-r
             aria-label={t('topbar.notifications')}
           >
             <Bell className="h-4 w-4" />
-            <span className="absolute -right-0.5 -top-0.5 flex h-3.5 w-3.5 items-center justify-center rounded-full bg-[var(--pf-danger)] font-mono text-[8.5px] font-semibold text-white">
-              2
-            </span>
+            {unread > 0 && (
+              <span className="absolute -right-0.5 -top-0.5 flex h-3.5 w-3.5 items-center justify-center rounded-full bg-[var(--pf-danger)] font-mono text-[8.5px] font-semibold text-white">
+                {unread > 9 ? '9+' : unread}
+              </span>
+            )}
           </button>
 
           <div className="mx-1 h-5 w-px bg-[var(--pf-border)]" />

@@ -183,12 +183,17 @@ export default function CampaignHeader({
               )}
             </motion.span>
           </div>
-          <span
-            className="text-[26px] font-bold tracking-tight text-white sm:text-[30px]"
-            style={{ fontFamily: 'var(--font-display)' }}
-          >
-            {brand.name}
-          </span>
+          {/* Hidden when the logo image already spells out the brand name
+              (Theme editor → Typography → "Afficher le nom de la marque"),
+              so it isn't printed twice. */}
+          {(brand.showBrandName ?? true) && (
+            <span
+              className="text-[26px] font-bold tracking-tight text-white sm:text-[30px]"
+              style={{ fontFamily: 'var(--font-display)' }}
+            >
+              {brand.name}
+            </span>
+          )}
         </div>
 
 
@@ -201,6 +206,23 @@ export default function CampaignHeader({
           onCommit={onEditTagline}
           accentColor="rgba(255,255,255,0.9)"
         />
+
+        {/* Partner/brand logo strip (Theme editor → Images → "Brand images").
+            Small white chips so any logo — light or dark — stays legible
+            against the brand-primary header. Hidden entirely when none are
+            set, same as the hero image / logo above. */}
+        {brand.brandImages && brand.brandImages.length > 0 && (
+          <div className="mt-1 flex flex-wrap items-center justify-center gap-2">
+            {brand.brandImages.map((img, i) => (
+              <span
+                key={i}
+                className="flex h-9 w-9 items-center justify-center overflow-hidden rounded-xl bg-white/95 p-1.5 shadow-sm"
+              >
+                <img src={img} alt="" className="h-full w-full object-contain" />
+              </span>
+            ))}
+          </div>
+        )}
       </div>
 
       {/* Step progress chips */}

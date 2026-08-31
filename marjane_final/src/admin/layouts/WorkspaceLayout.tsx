@@ -4,6 +4,7 @@ import { useParams } from 'react-router-dom'
 import { Sidebar } from '../components/Sidebar'
 import { Topbar } from '../components/Topbar'
 import { usePlatformStore } from '../lib/store'
+import { useNotificationFeed } from '../lib/useNotificationFeed'
 import { AnimatePresence, motion } from 'framer-motion'
 import { useAdminLang } from '../lib/adminI18n'
 
@@ -13,6 +14,10 @@ export function WorkspaceLayout({ children }: { children: ReactNode }) {
   const [collapsed, setCollapsed] = useState(false)
   const [mobileOpen, setMobileOpen] = useState(false)
   const { t, dir } = useAdminLang()
+
+  // Polls this site's real backend activity into admin notifications while
+  // the workspace is open — see useNotificationFeed.ts.
+  useNotificationFeed(website)
 
   if (!website || !siteId) {
     return (

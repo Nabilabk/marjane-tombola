@@ -45,6 +45,16 @@ export function readImageFile(file: File): Promise<string> {
   })
 }
 
+/** Reads any file (PDF, etc.) into a data URL as-is, with no resizing/re-encoding. */
+export function readFileAsDataUrl(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onerror = () => reject(new Error('Could not read that file.'))
+    reader.onload = () => resolve(reader.result as string)
+    reader.readAsDataURL(file)
+  })
+}
+
 /** Validates a picked file before attempting to read it. Returns an error message, or null if OK. */
 export function validateImageFile(file: File): string | null {
   if (!file.type.startsWith('image/')) return 'Please choose an image file.'
