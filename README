@@ -1,0 +1,106 @@
+# 🛒 Marjane Digital Tombola
+
+A full-stack digital promotional campaign platform designed to help
+marketing teams create and manage interactive tombola campaigns
+without requiring technical intervention.
+
+## ✨ Overview
+
+Marjane Digital Tombola provides a complete platform for creating
+and managing promotional campaigns, validating customer participation
+through receipt scanning, and running interactive games.
+
+The platform was designed with a multi-campaign architecture,
+allowing different campaigns to be configured and managed independently.
+
+## 🚀 Features
+
+- 🎯 Multi-campaign management
+- 🧾 OCR-based receipt validation
+- ✅ Verification of eligible products
+- 🔒 Prevention of receipt reuse
+- 👥 Role-based access control
+- 🎮 Interactive promotional games
+- 🎁 Prize and probability management
+- 🖥️ Campaign back-office
+- 🎨 Content and theme customization
+- 📱 Responsive mobile-first interface
+- 🌍 Multi-language support
+
+## 🎮 Games
+
+The platform includes interactive promotional experiences such as:
+
+- 🎡 Wheel of Fortune
+- 🃏 Scratch Cards
+- 🎲 Dice-based games
+
+## 🏗️ Architecture
+
+```text
+Frontend
+   │
+   │ REST API
+   ▼
+FastAPI Backend
+   │
+   ├── Campaign Management
+   ├── Receipt Validation / OCR
+   ├── Authentication & Authorization
+   ├── Game Logic
+   └── Prize Management
+   │
+   ▼
+MySQL Database
+🛠️ Tech Stack
+Frontend
+React
+TypeScript
+Vite
+Tailwind CSS
+Backend
+Python
+FastAPI
+REST API
+Database
+MySQL
+DevOps & Tools
+Docker
+Git
+CI/CD
+Azure
+Figma
+🔐 Security
+
+The application includes security mechanisms such as:
+
+Role-based permissions
+CORS configuration
+API rate limiting
+Receipt reuse prevention
+Controlled access to administrative features
+📱 User Flow
+Customer
+   ↓
+Enter Information
+   ↓
+Scan Receipt
+   ↓
+OCR Validation
+   ↓
+Eligibility Check
+   ↓
+Play Game
+   ↓
+Win / Result
+🎯 Objective
+
+The goal of the project is to transform promotional campaigns into
+a reusable digital platform that can be configured and operated by
+marketing teams with minimal technical intervention.
+
+👩‍💻 Author
+
+Nabila Boubekr
+Software Engineering Student | Full-Stack Developer
+  
